@@ -1,0 +1,1 @@
+# Sem ofuscação nesta versão.

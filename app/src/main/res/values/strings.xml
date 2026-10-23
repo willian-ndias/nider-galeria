@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nider Galeria</string>
+    <string name="aba_fotos">Fotos</string>
+    <string name="aba_forte">Nider Forte</string>
+    <string name="nova_pasta">Nova pasta</string>
+    <string name="nome_da_pasta">Nome da pasta</string>
+    <string name="criar">Criar</string>
+    <string name="cancelar">Cancelar</string>
+    <string name="galeria_vazia">Nenhuma foto nesta pasta.</string>
+    <string name="adicionar_fotos">Adicionar fotos</string>
+    <string name="setup_texto">Cadastre duas senhas. Cada uma abre a própria pasta. As duas telas são iguais.</string>
+    <string name="primeira_senha">Primeira senha</string>
+    <string name="segunda_senha">Segunda senha</string>
+    <string name="salvar_senhas">Salvar senhas</string>
+    <string name="digite_senha">Digite a senha.</string>
+    <string name="senha">Senha</string>
+    <string name="entrar">Entrar</string>
+    <string name="senha_incorreta">Senha incorreta.</string>
+    <string name="senha_curta">Cada senha precisa ter pelo menos 4 caracteres.</string>
+    <string name="senhas_iguais">As duas senhas precisam ser diferentes.</string>
+    <string name="tipo_foto">Foto</string>
+    <string name="tipo_pdf">PDF</string>
+    <string name="tipo_arquivo">Arquivo</string>
+    <string name="forte_vazio">Nenhum arquivo nesta pasta.</string>
+    <string name="adicionar_arquivos">Adicionar arquivos</string>
+    <string name="abrir_com">Abrir com</string>
+    <string name="sem_app">Nenhum aplicativo do celular abre este arquivo.</string>
+    <string name="toque_segura">Toque para abrir. Segure para apagar.</string>
+    <string name="arquivo_sem_nome">arquivo</string>
+    <string name="fechar">Fechar</string>
+    <string name="girar">Girar</string>
+</resources>
