@@ -26,10 +26,24 @@ Este projeto não fica dentro do repositório do Nider Terminal. Text, PDF e Eta
 - Arquivo aberto em outro aplicativo continua disponível até você voltar ao Nider Galeria. Aí a cópia temporária é apagada.
 - Uma foto que não abre não derruba a pasta.
 
+## Ícones (23/10/2026)
+
+Escolhidos pelo dev na família dos ícones Nider (fundo grafite, desenho branco, logo Cruzeiro do Sul no canto na cor do app):
+
+- **Nider Galeria**: fotos empilhadas, azul `#4F8CF7` (azul, não o ciano do Nider Text). É o ícone do app.
+- **Nider Forte**: porta de cofre, cinza prateado `#A9B3BF` (maçaneta `#5C6672`). É o ícone da aba do cofre.
+- **Nider Music**: fone de ouvido, verde `#2FD08A`. Guardado para o app de música, que ainda não existe.
+
+Os originais em SVG ficam em `arte/icones/`. `python3 arte/icones/gerar.py` (precisa do `resvg`) gera os PNG do Android no tamanho exato de cada densidade, sem reescala:
+
+- ícone adaptativo: `mipmap-*/ic_launcher_foreground.png` sobre o fundo vetorial `drawable/ic_bg.xml`, mais `ic_launcher_monochrome.png` para o ícone temático do Android 13;
+- abas Fotos e Nider Forte: `drawable-*/ic_aba_fotos.png` e `ic_aba_forte.png` (24 dp, coloridos), usados na barra de baixo (`Ui.kt`).
+
+Falta conferir no celular, com o APK instalado, como o ícone fica em cada formato de máscara (círculo, quadrado arredondado).
+
 ## O que falta
 
 - Gerar o APK e instalar no celular. Nesta máquina não tem Android Studio.
-- Ícone definitivo. O atual é provisório.
 - Miniatura crescendo até a tela e filtro de foto.
 
 ## Amanhã
