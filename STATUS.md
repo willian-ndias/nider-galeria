@@ -1,10 +1,10 @@
 # Nider Galeria — status 22/10/2026
 
-Pasta local: `d:\nider-terminal\nider-biblioteca`
+Pasta local: `d:\nider-galeria`
 
 GitHub: repositório privado `willian-ndias/nider-galeria`. Um programa só, então um repo só. O Nider Forte é a aba do cofre dentro do Nider Galeria, não um segundo projeto.
 
-Não commitar a pasta pai `d:\nider-terminal`. Ela não é o repositório do Nider. Os apps (nider, nider-etapas, nider-text, nider-pdf) têm o git deles, cada um na própria pasta.
+Este projeto não fica dentro do repositório do Nider Terminal. Text, PDF e Etapas continuam cada um no próprio repositório.
 
 ## Nomes
 
@@ -34,6 +34,6 @@ Não commitar a pasta pai `d:\nider-terminal`. Ela não é o repositório do Nid
 
 ## Amanhã
 
-Abrir `d:\nider-terminal\nider-biblioteca` no Android Studio, deixar o Gradle baixar, instalar no celular e corrigir o que aparecer na tela.
+Abrir `d:\nider-galeria` no Android Studio, deixar o Gradle baixar, instalar no celular e corrigir o que aparecer na tela.
 
 Música não entra neste projeto. Depois, app separado, a partir do player MIT [PixelPlay-vanilla](https://github.com/dhaneshdutta/PixelPlay-vanilla).
