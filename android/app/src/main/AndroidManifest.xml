@@ -25,12 +25,12 @@
 
         </activity>
 
-        <!-- "Compartilhar → Nider Forte": guarda sem senha e volta para o app de origem. -->
+        <!-- "Compartilhar → Ocultar": guarda no Forte sem senha e volta para o app de origem. O nome e o ícone não falam em cofre, de propósito. -->
         <activity
             android:name=".ForteShareActivity"
-            android:label="Nider Forte"
-            android:icon="@mipmap/ic_forte"
-            android:roundIcon="@mipmap/ic_forte"
+            android:label="Ocultar"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true"
             android:noHistory="true"

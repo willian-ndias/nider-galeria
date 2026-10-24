@@ -1,14 +1,14 @@
 # Nider Galeria — status 24/10/2026
 
-## 2.2.0 beta — branch `feat/2.2-galeria`
+## 2.2.1 beta — branch `feat/2.2-galeria` (a 2.2.0 só existiu como teste)
 
 - **Galeria do celular:** abas Fotos (por mês) e Pastas (por pasta do Android) leem o MediaStore (`listMedia` no `NiderPlugin`); miniaturas por `loadThumbnail` em lotes de 24 conforme aparecem na tela; visualizador PhotoSwipe abre a foto copiada para o cache (`viewPath`, limpa ao fechar); vídeo abre no player do celular.
 - **Selecionar → Enviar ao Forte** (`toForte`): usa a caixa de entrada (sem senha) e apaga a original (sem pergunta com "Gerenciar mídia").
 - **Compartilhar → Nider Fotos** (`FotosShareActivity`, diálogo nativo): pasta em `Pictures/Nider Galeria/<pasta>` e Copiar ou Mover (Mover = copia mantendo a data da foto e apaga a original).
 - **Atualização pelo app:** `checkUpdate` lê as releases do GitHub (repo público, sem token) e compara com a versão instalada; `installUpdate` baixa o APK para o cache e abre o instalador (pede uma vez "instalar apps desta origem"). Checa sozinho uma vez por dia; Menu → Verificar atualização e Sobre.
+- **Forte discreto (2.2.1):** depois de criado, sai do menu; entra segurando o ícone no topo do menu (opção "Mostrar o Forte no menu" nas configurações dele, guardada no aparelho). O Compartilhar mostra **Ocultar** com o ícone do Nider Galeria. Na seleção da galeria: Compartilhar, Mover/Copiar (pasta Nider), Ocultar (= Forte) e Apagar (lixeira do Android, `createTrashRequest`). Engrenagem de verdade no lugar do ícone que parecia um sol.
 - Código Java de mídia e da caixa de entrada separado em `Midia.java` e `ForteInbox.java`.
-- **Até onde foi:** PUSH da branch `feat/2.2-galeria`. APK de teste assinado com a chave definitiva (instala por cima da 2.1.0) entregue por artefato.
-- **Falta:** teste do dev no celular; depois PR para a `main` e workflow **Publicar versão**; deploy do ícone novo do card no Nider.
+- **Até onde foi:** PR para a `main` + workflow **Publicar versão** → release `v2.2.1-beta` (o dev testa a atualização automática a partir da 2.2.0 teste). Ícone novo do card publicado no Nider junto.
 
 
 ## 2.1.0 beta (Capacitor) — branch `feat/capacitor-2.1`

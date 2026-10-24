@@ -337,6 +337,83 @@ public class NiderPlugin extends Plugin {
         deleteLauncher.launch(new IntentSenderRequest.Builder(pi.getIntentSender()).build());
     }
 
+    // ---------- ações da seleção na galeria ----------
+
+    private static List<Uri> urisOf(PluginCall call) {
+        List<Uri> out = new ArrayList<>();
+        JSArray arr = call.getArray("uris");
+        for (int i = 0; arr != null && i < arr.length(); i++) {
+            try {
+                out.add(Uri.parse(arr.getString(i)));
+            } catch (Exception ignored) {
+            }
+        }
+        return out;
+    }
+
+    /** Abre o "Compartilhar" do Android com as fotos escolhidas. */
+    @PluginMethod
+    public void shareUris(PluginCall call) {
+        ArrayList<Uri> uris = new ArrayList<>(urisOf(call));
+        if (uris.isEmpty()) {
+            call.resolve();
+            return;
+        }
+        Intent i = uris.size() == 1
+            ? new Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris.get(0))
+            : new Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+        i.setType("*/*");
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        Intent chooser = Intent.createChooser(i, null);
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(chooser);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void niderFolders(PluginCall call) {
+        JSArray out = new JSArray();
+        for (String f : Midia.niderFolders(getContext())) out.put(f);
+        call.resolve(new JSObject().put("folders", out));
+    }
+
+    /** Copia ou move para Pictures/Nider Galeria/<pasta>. Mover apaga a original (pedido do Android ou silencioso com "Gerenciar mídia"). */
+    @PluginMethod
+    public void copyTo(PluginCall call) {
+        String folder = call.getString("folder", "Nider");
+        boolean move = Boolean.TRUE.equals(call.getBoolean("move", false));
+        List<Uri> done = new ArrayList<>();
+        for (Uri u : urisOf(call)) {
+            try {
+                Midia.copyToFolder(getContext(), u, folder);
+                done.add(u);
+            } catch (Exception ignored) {
+            }
+        }
+        if (!move || done.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            call.resolve(new JSObject().put("saved", done.size()).put("deleted", false));
+            return;
+        }
+        PendingIntent pi = MediaStore.createDeleteRequest(getContext().getContentResolver(), done);
+        deleteCall = call;
+        deleteSaved = done.size();
+        deleteLauncher.launch(new IntentSenderRequest.Builder(pi.getIntentSender()).build());
+    }
+
+    /** Apagar da galeria: vai para a lixeira do Android (Android 11+), que guarda por 30 dias. */
+    @PluginMethod
+    public void trashUris(PluginCall call) {
+        List<Uri> uris = urisOf(call);
+        if (uris.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            call.reject("Precisa do Android 11 ou mais novo");
+            return;
+        }
+        PendingIntent pi = MediaStore.createTrashRequest(getContext().getContentResolver(), uris, true);
+        deleteCall = call;
+        deleteSaved = uris.size();
+        deleteLauncher.launch(new IntentSenderRequest.Builder(pi.getIntentSender()).build());
+    }
+
     // ---------- atualização pelo app ----------
 
     private static final String RELEASES = "https://api.github.com/repos/willian-ndias/nider-galeria/releases?per_page=10";

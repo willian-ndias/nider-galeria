@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * "Compartilhar → Nider Forte": guarda sem pedir senha (ForteInbox) e volta para o
+ * "Compartilhar → Ocultar": guarda no Forte sem pedir senha (ForteInbox) e volta para o
  * app de origem. A original some da galeria: sem confirmação quando o app tem
  * "Gerenciar mídia".
  */
@@ -51,13 +51,13 @@ public class ForteShareActivity extends ComponentActivity {
                             if (m != null) media.add(m);
                         }
                     }
-                    message = saved == 0 ? "O Forte aceita fotos e PDFs" : saved == 1 ? "Guardado no Forte" : saved + " itens guardados no Forte";
+                    message = saved == 0 ? "Só fotos e PDFs podem ser ocultados" : saved == 1 ? "Ocultado" : saved + " itens ocultados";
                     if (saved > 0 && media.size() < saved) {
                         message += media.isEmpty() ? ", mas a original continua na galeria" : ", mas " + (saved - media.size()) + " original(is) continua(m) na galeria";
                     }
                 }
             } catch (Exception e) {
-                message = "Não consegui guardar no Forte";
+                message = "Não consegui ocultar";
             }
             final String msg = message;
             new Handler(Looper.getMainLooper()).post(() -> {
