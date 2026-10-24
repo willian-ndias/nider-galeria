@@ -15,8 +15,11 @@ O app passou de Kotlin/Compose para **Capacitor** (HTML/JS em `src/`, Android em
 - **Seleção no Forte** (segurar): Todos, Restaurar para a galeria (sai do Forte e vai para `Pictures/Nider Galeria`, PDF para `Download/Nider Galeria`; Android 10+), Renomear, Excluir.
 - **Lixeira do Forte**: excluir manda para a lixeira; some de vez após 30 dias (limpa ao abrir o Forte). Apagar pasta manda os itens para a lixeira; recuperar sem a pasta cria "Recuperados".
 
-**Até onde foi:** PUSH da branch `feat/capacitor-2.1`. APK de teste (assinatura debug da sessão) entregue ao dev por artefato.
-**Falta:** chave de assinatura definitiva + APK pelo GitHub Actions, atualização pelo app, card no Nider Downloads. Compartilhar, restaurar e lixeira testados só no navegador (a parte nativa compila, falta o teste no celular).
+**Publicar uma versão (desde a 2.1.0 beta oficial):** subir `version` no `package.json` e `versionCode`/`versionName` em `android/app/build.gradle`, escrever `novidades/<versão>.md`, juntar na `main` e rodar o workflow **Publicar versão** (Actions → Run workflow). Ele monta o APK assinado com a chave definitiva e cria a release `v<versão>`; o Nider Downloads lê a release.
+- Chave definitiva: `android/nider-galeria.jks.enc` (criptografada; alias `nider-galeria`). A senha fica só no segredo `NIDER_KEYSTORE_PASSWORD` do repositório. **Perder a senha = não dá mais para atualizar por cima** (tem que desinstalar). Os testes 1–6 usaram a chave debug da sessão e precisam ser desinstalados uma vez.
+
+**Até onde foi:** PUSH da branch `feat/capacitor-2.1` + PR para a `main`. Falta o dev criar o segredo `NIDER_KEYSTORE_PASSWORD` e rodar o workflow; depois, card no Nider Downloads (develop → master no repo do Nider).
+**Falta:** atualização pelo app (2.2.0). Compartilhar, restaurar e lixeira testados só no navegador (a parte nativa compila, falta o teste no celular).
 
 Montar: `npm ci && npm run sync && cd android && ./gradlew assembleDebug` (precisa de `ANDROID_HOME`).
 

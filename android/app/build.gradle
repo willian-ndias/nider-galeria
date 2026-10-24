@@ -16,8 +16,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Chave definitiva: android/nider-galeria.jks.enc, aberta no GitHub Actions com o
+    // segredo NIDER_KEYSTORE_PASSWORD. Sem a chave, o release sai sem assinatura.
+    signingConfigs {
+        release {
+            if (System.getenv("NIDER_KEYSTORE")) {
+                storeFile file(System.getenv("NIDER_KEYSTORE"))
+                storePassword System.getenv("NIDER_KEYSTORE_PASSWORD")
+                keyAlias "nider-galeria"
+                keyPassword System.getenv("NIDER_KEYSTORE_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
+            if (System.getenv("NIDER_KEYSTORE")) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
