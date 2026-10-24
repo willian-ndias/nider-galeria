@@ -76,11 +76,14 @@ public class ForteShareActivity extends ComponentActivity {
                     for (Uri u : uris) {
                         if (store(inbox, u)) {
                             saved++;
-                            String m = mediaUri(u);
-                            if (m != null) media.add(Uri.parse(m));
+                            Uri m = findOriginal(u);
+                            if (m != null) media.add(m);
                         }
                     }
                     message = saved == 0 ? "O Forte aceita fotos e PDFs" : saved == 1 ? "Guardado no Forte" : saved + " itens guardados no Forte";
+                    if (saved > 0 && media.size() < saved) {
+                        message += media.isEmpty() ? ", mas a original continua na galeria" : ", mas " + (saved - media.size()) + " original(is) continua(m) na galeria";
+                    }
                 }
             } catch (Exception e) {
                 message = "Não consegui guardar no Forte";
@@ -208,11 +211,48 @@ public class ForteShareActivity extends ComponentActivity {
         return out.toByteArray();
     }
 
-    private static String mediaUri(Uri uri) {
-        String s = uri.toString();
-        if ("media".equals(uri.getAuthority())) return s;
-        Matcher m = MEDIA_URI.matcher(Uri.decode(s));
-        return m.find() ? m.group() : null;
+    private static final Pattern FILE_PATH = Pattern.compile("(/storage/[^?#]+|/sdcard/[^?#]+)");
+
+    /**
+     * A foto original no catálogo do Android, para apagar. O Google Fotos manda o
+     * endereço do catálogo; a Galeria da Xiaomi manda o caminho do arquivo, que é
+     * procurado no catálogo (precisa da liberação de ver as fotos).
+     */
+    private Uri findOriginal(Uri uri) {
+        if ("media".equals(uri.getAuthority())) return uri;
+        String decoded = Uri.decode(uri.toString());
+        Matcher m = MEDIA_URI.matcher(decoded);
+        if (m.find()) return Uri.parse(m.group());
+        String path = dataColumn(uri);
+        if (path == null) {
+            Matcher f = FILE_PATH.matcher(decoded);
+            if (f.find()) path = f.group(1).replace("/sdcard/", "/storage/emulated/0/");
+        }
+        if (path == null) return null;
+        Uri[] tables = {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            MediaStore.Files.getContentUri("external"),
+        };
+        for (Uri table : tables) {
+            try (Cursor c = getContentResolver().query(table, new String[] {MediaStore.MediaColumns._ID},
+                    MediaStore.MediaColumns.DATA + "=?", new String[] {path}, null)) {
+                if (c != null && c.moveToFirst()) return android.content.ContentUris.withAppendedId(table, c.getLong(0));
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
+    }
+
+    private String dataColumn(Uri uri) {
+        try (Cursor c = getContentResolver().query(uri, new String[] {MediaStore.MediaColumns.DATA}, null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                String p = c.getString(0);
+                if (p != null && p.startsWith("/")) return p;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     private static String displayName(ContentResolver cr, Uri uri) {
