@@ -525,18 +525,46 @@ async function saveIncoming(folderId) {
   if (!saved) return say('Nenhum arquivo pôde ser guardado. O Forte aceita fotos e PDFs');
   say(`${plural(saved)} no Forte`);
   if (!media.length) {
-    if (saved) setTimeout(() => say('Guardado. Se quiser, apague a original no app de fotos'), 3300);
+    setTimeout(() => say('Guardado. Esta foto veio da nuvem do Google Fotos: apague a original por lá'), 3300);
     return;
   }
-  const ok = await ask({ title: 'Apagar a original da galeria?', text: `${media.length === 1 ? 'A foto já está segura' : 'As fotos já estão seguras'} no Forte. O Android vai pedir para confirmar.`, ok: 'Apagar original' });
-  if (!ok) return;
+  await removeOriginals(media);
+}
+
+// A original some da galeria sem perguntar quando o app tem "Gerenciar mídia".
+// Sem isso, o Android mostra a confirmação dele. A liberação é pedida uma vez só.
+let pendingDelete = null;
+
+async function removeOriginals(media) {
+  let acc = { read: false, manage: false };
+  try { acc = await Nider.mediaAccess(); } catch { return; }
+  if (!(acc.read && acc.manage) && !askedSetup()) {
+    markSetup();
+    const ok = await ask({ title: 'Liberar uma vez', text: 'Para a foto sumir da galeria sozinha, sem perguntar, o Android precisa de duas liberações: ver as fotos e "Gerenciar mídia". É só desta vez.', ok: 'Liberar' });
+    if (ok) {
+      st.picking = true;
+      if (!acc.read) acc = await Nider.requestRead().catch(() => acc);
+      if (!acc.manage) {
+        pendingDelete = media;
+        await Nider.openManageMedia().catch(() => {});
+        return; // apaga quando voltar da tela do Android
+      }
+    }
+  }
+  await runDelete(media);
+}
+
+async function runDelete(media) {
   st.picking = true;
   try {
     const r = await Nider.deleteOriginals({ uris: media });
-    say(r.deleted ? 'Original apagada da galeria' : 'A original continua na galeria');
+    if (!r.deleted) say('A original continua na galeria');
   } catch { say('Não consegui apagar a original. Apague no app de fotos'); }
   setTimeout(() => { st.picking = false; }, 1500);
 }
+
+function askedSetup() { try { return localStorage.getItem('nider.midia') === '1'; } catch { return true; } }
+function markSetup() { try { localStorage.setItem('nider.midia', '1'); } catch { /* sem armazenamento */ } }
 
 // ---------- seleção: restaurar, renomear, excluir ----------
 
@@ -729,7 +757,11 @@ $picker.addEventListener('change', async () => {
 });
 
 App.addListener('appStateChange', ({ isActive }) => {
-  if (isActive) { setTimeout(() => { st.picking = false; }, 1500); return; }
+  if (isActive) {
+    if (pendingDelete) { const m = pendingDelete; pendingDelete = null; runDelete(m); return; }
+    setTimeout(() => { st.picking = false; }, 1500);
+    return;
+  }
   if (st.space && !st.picking && st.space.index.settings.lockOnLeave !== false) lock(true);
 });
 

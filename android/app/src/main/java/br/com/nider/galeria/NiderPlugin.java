@@ -10,6 +10,11 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
+import android.Manifest;
+import com.getcapacitor.PermissionState;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.IntentSenderRequest;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -34,7 +39,13 @@ import java.util.regex.Pattern;
  * apagar a original da galeria (com a confirmação do sistema) e devolver um
  * arquivo do Forte para a galeria do celular.
  */
-@CapacitorPlugin(name = "Nider")
+@CapacitorPlugin(
+    name = "Nider",
+    permissions = {
+        @Permission(alias = "photos", strings = {Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO}),
+        @Permission(alias = "storage", strings = {Manifest.permission.READ_EXTERNAL_STORAGE})
+    }
+)
 public class NiderPlugin extends Plugin {
 
     private static final Pattern MEDIA_URI = Pattern.compile("content://media/[^/\\s]+/(images|video|file)/media/\\d+");
@@ -120,6 +131,50 @@ public class NiderPlugin extends Plugin {
         byte[] buf = new byte[64 * 1024];
         int r;
         while ((r = in.read(buf)) > 0) out.write(buf, 0, r);
+    }
+
+    private String readAlias() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? "photos" : "storage";
+    }
+
+    private JSObject access() {
+        JSObject out = new JSObject();
+        out.put("read", getPermissionState(readAlias()) == PermissionState.GRANTED);
+        out.put("manage", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && MediaStore.canManageMedia(getContext()));
+        return out;
+    }
+
+    /** read: pode ver as fotos; manage: pode apagar sem a confirmação do Android ("Gerenciar mídia"). */
+    @PluginMethod
+    public void mediaAccess(PluginCall call) {
+        call.resolve(access());
+    }
+
+    @PluginMethod
+    public void requestRead(PluginCall call) {
+        if (getPermissionState(readAlias()) == PermissionState.GRANTED) {
+            call.resolve(access());
+            return;
+        }
+        requestPermissionForAlias(readAlias(), call, "readDone");
+    }
+
+    @PermissionCallback
+    private void readDone(PluginCall call) {
+        call.resolve(access());
+    }
+
+    /** Abre a tela do Android "Gerenciar mídia" deste app (liberar uma vez). */
+    @PluginMethod
+    public void openManageMedia(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            call.resolve(new JSObject().put("opened", false));
+            return;
+        }
+        Intent i = new Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA, Uri.parse("package:" + getContext().getPackageName()));
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(i);
+        call.resolve(new JSObject().put("opened", true));
     }
 
     @PluginMethod
