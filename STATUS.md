@@ -1,5 +1,7 @@
 # Nider Galeria — status 24/10/2026
 
+## 2.3.2 beta — só número de versão, pedido do dev para ver o carregando novo (a 2.3.1 baixada pela 2.3.0 ainda mostrou a barrinha antiga). PR + workflow → `v2.3.2-beta`.
+
 ## 2.3.1 beta — ajustes (branch `feat/2.3.1`)
 
 - **Segurar o ícone do menu não abria o Forte no celular:** no Android o toque longo sobre `<img>` cancela o pointer (o `pointercancel`/`pointerleave` limpava o temporizador). Agora o `contextmenu` do toque longo também dispara o "segurar", o `pointerleave` não cancela mais (só mover o dedo mais de 12 px), e a imagem do ícone não recebe o toque.

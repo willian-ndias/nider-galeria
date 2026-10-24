@@ -11,7 +11,7 @@ import { vault, toBase64, fromBase64 } from './vault.js';
 const Nider = registerPlugin('Nider');
 const TRASH = 'lixeira';
 
-const VERSION = '2.3.1 beta';
+const VERSION = '2.3.2 beta';
 const ICON_G = './nider-galeria.svg';
 const ICON_F = './nider-forte.svg';
 
