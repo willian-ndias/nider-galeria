@@ -2,7 +2,7 @@ import './style.css';
 import 'photoswipe/style.css';
 import PhotoSwipe from 'photoswipe';
 import { App } from '@capacitor/app';
-import { registerPlugin } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
 import { vault, toBase64, fromBase64 } from './vault.js';
@@ -11,7 +11,7 @@ import { vault, toBase64, fromBase64 } from './vault.js';
 const Nider = registerPlugin('Nider');
 const TRASH = 'lixeira';
 
-const VERSION = '2.1.0 beta';
+const VERSION = '2.2.0 beta';
 const ICON_G = './nider-galeria.svg';
 const ICON_F = './nider-forte.svg';
 
@@ -29,6 +29,12 @@ const st = {
   sheet: null,
   wipe: false,
   picking: false,
+  tab: 'fotos', // fotos | pastas (galeria do celular)
+  album: null, // pasta do celular aberta
+  lib: null, // { items } fotos e vídeos do celular; null = ainda não leu
+  libLimit: 600,
+  gsel: null, // fotos do celular selecionadas
+  update: null, // { latest, notes, url } quando tem versão nova
   sel: null, // ids selecionados dentro de uma pasta ou da lixeira
   media: null, // { read, manage }: liberações do Android para apagar da galeria sem perguntar
 };
@@ -61,6 +67,8 @@ const svg = {
   undo: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
   close: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   tick: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0E1216" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  play: '<svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M7 4.5v15l12-7.5z"/></svg>',
+  refresh: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#C9D2DC" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/></svg>',
   eye: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C9D2DC" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12s3.5-6.5 9-6.5 9 6.5 9 6.5-3.5 6.5-9 6.5S3 12 3 12z"/><path d="M4 4l16 16"/></svg>',
 };
 
@@ -73,25 +81,187 @@ function say(text) {
 
 // ---------- telas ----------
 
+const fmtDur = (ms) => { const t = Math.round(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+const monthOf = (t) => { const m = new Date(t).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }); return m.charAt(0).toUpperCase() + m.slice(1); };
+
+function albums() {
+  const map = new Map();
+  for (const it of st.lib.items) {
+    if (!map.has(it.b)) map.set(it.b, { id: it.b, name: it.bn, items: [] });
+    map.get(it.b).items.push(it);
+  }
+  return [...map.values()];
+}
+
+function galleryList() {
+  if (!st.lib) return [];
+  return st.album ? st.lib.items.filter((i) => i.b === st.album) : st.lib.items;
+}
+
+function tile(it) {
+  const on = st.gsel && st.gsel.includes(it.uri);
+  return `<button class="tile ${on ? 'picked' : ''}" data-act="gitem" data-uri="${esc(it.uri)}" data-hold="gitem" data-g="${esc(it.uri)}" aria-label="${esc(it.name || 'foto')}">
+    ${it.video ? `<span class="vid">${svg.play}${fmtDur(it.d)}</span>` : ''}
+    ${st.gsel ? `<span class="check ${on ? 'on' : ''}">${on ? svg.tick : ''}</span>` : ''}
+  </button>`;
+}
+
 function viewGallery() {
-  return `
-    <header class="top">
-      <button class="ib" data-act="drawer" aria-label="Abrir menu">${svg.menu}</button>
-      <div class="title"><b>Nider Galeria</b></div>
-    </header>
-    <main class="main">
-      <div class="empty">
-        <img src="${ICON_G}" alt="" width="132" height="132">
-        <b>Suas fotos vão aparecer aqui</b>
-        <p>Pastas do celular, importar e organizar chegam nas próximas versões.</p>
-      </div>
-    </main>
-    <nav class="nav" aria-label="Seções">
-      <button data-act="soon">${svg.photo}Fotos</button>
-      <button data-act="soon">${svg.folder()}Pastas</button>
+  const lib = st.lib;
+  let body;
+  if (lib && lib.denied) {
+    body = `<div class="empty"><img src="${ICON_G}" alt="" width="120" height="120"><b>Ver as fotos do celular</b><p>Para mostrar suas fotos e pastas, o Nider Galeria precisa da sua liberação.</p><button class="btn primary" style="height:48px;padding:0 22px" data-act="grantRead">Permitir</button></div>`;
+  } else if (!lib) {
+    body = '<div class="empty"><p>Carregando suas fotos…</p></div>';
+  } else if (st.tab === 'pastas' && !st.album) {
+    body = `<div class="folders">${albums().map((a) => {
+      const cells = [0, 1, 2, 3].map((n) => `<i ${a.items[n] ? `data-g="${esc(a.items[n].uri)}"` : ''}></i>`).join('');
+      return `<button class="folder" data-act="album" data-id="${esc(a.id)}"><div class="cover">${cells}<span class="badge">${svg.folder('#7FAAF9', 22)}</span></div><b>${esc(a.name)}</b><small>${a.items.length} ${a.items.length === 1 ? 'item' : 'itens'}</small></button>`;
+    }).join('')}</div>`;
+  } else {
+    const list = galleryList();
+    const shown = list.slice(0, st.libLimit);
+    if (!list.length) body = '<div class="empty"><b>Nenhuma foto aqui</b></div>';
+    else if (st.album) body = `<div class="grid">${shown.map(tile).join('')}</div>`;
+    else {
+      let html = '';
+      let month = null;
+      let open = false;
+      for (const it of shown) {
+        const m = monthOf(it.t);
+        if (m !== month) { if (open) html += '</div></section>'; html += `<section class="month"><h2>${m}</h2><div class="grid">`; month = m; open = true; }
+        html += tile(it);
+      }
+      if (open) html += '</div></section>';
+      body = html;
+    }
+    if (list.length > shown.length) body += `<div style="padding:0 16px 120px;text-align:center"><button class="btn" data-act="more">Mostrar mais (${list.length - shown.length})</button></div>`;
+  }
+  const album = st.album && st.lib && albums().find((a) => a.id === st.album);
+  const head = st.gsel
+    ? `<button class="ib" data-act="gselClear" aria-label="Cancelar seleção">${svg.close}</button><div class="title"><b>${st.gsel.length} ${st.gsel.length === 1 ? 'selecionada' : 'selecionadas'}</b></div><button class="pill" data-act="gselAll">Todas</button>`
+    : album
+      ? `<button class="ib" data-act="albumUp" aria-label="Voltar às pastas">${svg.back}</button><div class="title"><b>${esc(album.name)}</b><small>${album.items.length} itens · segure para selecionar</small></div>`
+      : `<button class="ib" data-act="drawer" aria-label="Abrir menu" style="position:relative">${svg.menu}${st.update ? '<span class="dot"></span>' : ''}</button><div class="title"><b>${st.tab === 'pastas' ? 'Pastas' : 'Fotos'}</b>${lib && lib.items ? `<small>${lib.items.length} itens</small>` : ''}</div>`;
+  const nav = st.gsel
+    ? `<nav class="actions"><button data-act="gToForte" ${st.gsel.length ? '' : 'disabled'}><img src="${ICON_F}" alt="" width="30" height="30" style="border-radius:8px">Enviar ao Forte</button></nav>`
+    : `<nav class="nav" aria-label="Seções">
+      <button data-act="tabFotos" class="${st.tab === 'fotos' && !st.album ? 'on' : ''}">${svg.photo}Fotos</button>
+      <button data-act="tabPastas" class="${st.tab === 'pastas' || st.album ? 'on' : ''}">${svg.folder()}Pastas</button>
       <button data-act="soon">${svg.star}Favoritos</button>
       <button data-act="soon">${svg.trash}Lixeira</button>
     </nav>`;
+  return `<header class="top">${head}</header><main class="main" id="gmain">${body}</main>${nav}`;
+}
+
+// ---------- galeria do celular ----------
+
+async function loadLibrary() {
+  try {
+    const acc = await Nider.mediaAccess();
+    if (!acc.read) { st.lib = { denied: true }; render(); return; }
+    const { items } = await Nider.listMedia();
+    st.lib = { items };
+  } catch {
+    st.lib = { items: [] };
+  }
+  render();
+}
+
+const gthumbs = new Map();
+let gqueue = [];
+let gbusy = false;
+const gobs = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    gobs.unobserve(e.target);
+    const u = e.target.dataset.g;
+    if (!gthumbs.has(u) && !gqueue.includes(u)) gqueue.push(u);
+  }
+  pumpThumbs();
+}, { rootMargin: '400px' });
+
+async function pumpThumbs() {
+  if (gbusy || !gqueue.length) return;
+  gbusy = true;
+  const batch = gqueue.splice(0, 24);
+  try {
+    const out = await Nider.thumbs({ uris: batch });
+    for (const u of batch) gthumbs.set(u, out[u] || '');
+    for (const el of $app.querySelectorAll('[data-g]')) {
+      const url = gthumbs.get(el.dataset.g);
+      if (url) el.style.backgroundImage = `url("${url}")`;
+    }
+  } catch { for (const u of batch) gthumbs.set(u, ''); }
+  gbusy = false;
+  pumpThumbs();
+}
+
+function attachThumbs() {
+  for (const el of $app.querySelectorAll('[data-g]')) {
+    const url = gthumbs.get(el.dataset.g);
+    if (url) el.style.backgroundImage = `url("${url}")`;
+    else if (url === undefined) gobs.observe(el);
+  }
+}
+
+async function openGalleryPhoto(it) {
+  if (it.video) {
+    try { await Nider.openExternal({ uri: it.uri, mime: it.mime || 'video/*' }); } catch (e) { say(e.message || 'Nenhum app abre este vídeo'); }
+    return;
+  }
+  const list = galleryList().filter((x) => !x.video);
+  const start = list.indexOf(it);
+  const src = async (x) => Capacitor.convertFileSrc((await Nider.viewPath({ uri: x.uri })).path);
+  const slides = list.map((x) => ({ width: x.w || 1200, height: x.h || 1600, alt: x.name }));
+  slides[start].src = await src(it);
+  pswp = new PhotoSwipe({ dataSource: slides, index: start, bgOpacity: 1, spacing: 0.12, showHideAnimationType: 'fade', closeTitle: 'Fechar', zoomTitle: 'Zoom', arrowPrevTitle: 'Anterior', arrowNextTitle: 'Próxima' });
+  const fill = (i) => {
+    if (i < 0 || i >= list.length || slides[i].src || slides[i].loading) return;
+    slides[i].loading = true;
+    src(list[i]).then((u) => { slides[i].src = u; if (pswp) pswp.refreshSlideContent(i); }).catch(() => {});
+  };
+  pswp.addFilter('itemData', (data, i) => {
+    if (!data.src) { fill(i); return { ...data, src: gthumbs.get(list[i].uri) || 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' }; }
+    return data;
+  });
+  pswp.on('change', () => { fill(pswp.currIndex - 1); fill(pswp.currIndex + 1); });
+  pswp.on('destroy', () => { pswp = null; Nider.clearView().catch(() => {}); });
+  pswp.init();
+  fill(start - 1);
+  fill(start + 1);
+}
+
+// ---------- atualização pelo app ----------
+
+function checkedToday() {
+  try { return localStorage.getItem('nider.update') === new Date().toDateString(); } catch { return false; }
+}
+
+async function checkUpdate(manual) {
+  if (!manual && checkedToday()) return;
+  let info;
+  try { info = await Nider.checkUpdate(); } catch { if (manual) say('Sem conexão. Tente de novo mais tarde'); return; }
+  try { localStorage.setItem('nider.update', new Date().toDateString()); } catch { /* sem armazenamento */ }
+  if (!info.newer) { st.update = null; render(); if (manual) say(`Você está na versão mais nova (${info.current})`); return; }
+  st.update = info;
+  render();
+  const notes = (info.notes || '').split('\n').filter(Boolean).slice(0, 6).join('\n');
+  if (await ask({ title: `Versão ${info.latest} disponível`, text: notes || 'Toque em Atualizar para instalar.', ok: 'Atualizar' })) doUpdate();
+}
+
+let installPending = false;
+async function doUpdate() {
+  if (!st.update) return;
+  const sub = await Nider.addListener('updateProgress', ({ pct }) => { st.toast = pct >= 0 ? `Baixando a versão nova… ${pct}%` : 'Baixando a versão nova…'; render(); });
+  try {
+    st.picking = true;
+    const r = await Nider.installUpdate({ url: st.update.url });
+    if (r.needsPermission) { installPending = true; say('Permita instalar apps do Nider Galeria e volte'); }
+    else st.toast = null;
+  } catch (e) { say(e.message || 'O download falhou'); }
+  sub.remove();
+  render();
 }
 
 function shownItems() {
@@ -196,13 +366,13 @@ function viewDrawer() {
     <aside class="drawer">
       <div class="dhead"><img src="${ICON_G}" alt="" width="64" height="64"><div><b>Nider Galeria</b><small>${VERSION}</small></div></div>
       <div style="padding:8px 0">
-        <button class="row off" data-act="soon">${svg.photo}Fotos<span class="soon">EM BREVE</span></button>
-        <button class="row off" data-act="soon">${svg.folder()}Pastas<span class="soon">EM BREVE</span></button>
-        <button class="row off" data-act="soon">${svg.import}Importar pasta<span class="soon">EM BREVE</span></button>
+        <button class="row" data-act="tabFotos">${svg.photo}Fotos</button>
+        <button class="row" data-act="tabPastas">${svg.folder()}Pastas</button>
       </div>
       <div class="sep"></div>
       <div style="padding:8px 0">
         <button class="row" data-act="openForte" style="min-height:64px"><img src="${ICON_F}" alt="" width="32" height="32" style="border-radius:9px"><span style="flex:1;font-weight:700">Nider Forte</span>${svg.chev}</button>
+        <button class="row" data-act="checkUpdate">${svg.refresh}<span style="flex:1">Verificar atualização</span>${st.update ? `<span class="badge-new">${esc(st.update.latest)}</span>` : ''}</button>
         <button class="row" data-act="about">${svg.info}Sobre</button>
       </div>
     </aside>`;
@@ -265,6 +435,7 @@ function render() {
   $app.innerHTML = html;
   if (active === 'dlgInput' || (st.dialog && st.dialog.input !== undefined)) document.getElementById('dlgInput')?.focus();
   loadThumbs();
+  attachThumbs();
 }
 
 // ---------- miniaturas e visualizador ----------
@@ -531,7 +702,43 @@ const actions = {
   drawer: () => { st.drawer = true; render(); },
   closeDrawer: () => { st.drawer = false; render(); },
   soon: () => say('Chega numa próxima versão'),
-  about: () => { st.drawer = false; ask({ icon: ICON_G, title: 'Nider Galeria', text: `Versão ${VERSION}`, ok: 'Fechar', cancel: false }); },
+  tabFotos: () => { st.drawer = false; st.tab = 'fotos'; st.album = null; st.gsel = null; st.libLimit = 600; render(); },
+  tabPastas: () => { st.drawer = false; st.tab = 'pastas'; st.album = null; st.gsel = null; render(); },
+  album: (el) => { st.album = el.dataset.id; st.libLimit = 600; render(); },
+  albumUp: () => { st.album = null; st.gsel = null; render(); },
+  more: () => { st.libLimit += 600; render(); },
+  grantRead: async () => { try { await Nider.requestRead(); } catch { /* recusado */ } loadLibrary(); },
+  gitem: (el) => {
+    const it = galleryList().find((x) => x.uri === el.dataset.uri);
+    if (!it) return;
+    if (st.gsel) {
+      st.gsel = st.gsel.includes(it.uri) ? st.gsel.filter((u) => u !== it.uri) : [...st.gsel, it.uri];
+      render();
+      return;
+    }
+    openGalleryPhoto(it).catch(() => say('Não consegui abrir esta foto'));
+  },
+  gselClear: () => { st.gsel = null; render(); },
+  gselAll: () => { const all = galleryList().slice(0, st.libLimit).map((x) => x.uri); st.gsel = st.gsel && st.gsel.length === all.length ? [] : all; render(); },
+  gToForte: async () => {
+    const uris = [...st.gsel];
+    st.toast = `Guardando ${uris.length} no Forte…`;
+    render();
+    st.picking = true;
+    try {
+      const r = await Nider.toForte({ uris });
+      st.gsel = null;
+      say(`${r.saved} ${r.saved === 1 ? 'item guardado' : 'itens guardados'} no Forte${r.deleted === false ? ', mas a original continua na galeria' : ''}`);
+    } catch (e) { say(e.message || 'Não consegui guardar no Forte'); }
+    setTimeout(() => { st.picking = false; }, 1500);
+    loadLibrary();
+  },
+  checkUpdate: () => { st.drawer = false; render(); checkUpdate(true); },
+  about: async () => {
+    st.drawer = false;
+    const upd = await ask({ icon: ICON_G, title: 'Nider Galeria', text: `Versão ${VERSION}`, ok: st.update ? `Atualizar para ${st.update.latest}` : 'Verificar atualização' });
+    if (upd) { if (st.update) doUpdate(); else checkUpdate(true); }
+  },
   openForte: async () => openPin((await vault.exists()) ? 'unlock' : 'create'),
   key: (el) => {
     const p = st.pin;
@@ -650,6 +857,11 @@ const actions = {
 };
 
 const holds = {
+  gitem: (uri) => {
+    const sel = st.gsel || [];
+    if (!sel.includes(uri)) st.gsel = [...sel, uri];
+    render();
+  },
   item: (id) => {
     const sel = st.sel || [];
     if (!sel.includes(id)) st.sel = [...sel, id];
@@ -679,7 +891,7 @@ $app.addEventListener('pointerdown', (ev) => {
   const el = ev.target.closest('[data-hold]');
   held = false;
   if (!el) return;
-  holdTimer = setTimeout(() => { held = true; navigator.vibrate?.(20); holds[el.dataset.hold](el.dataset.id); }, 480);
+  holdTimer = setTimeout(() => { held = true; navigator.vibrate?.(20); holds[el.dataset.hold](el.dataset.id || el.dataset.uri); }, 480);
 });
 for (const t of ['pointerup', 'pointercancel', 'pointerleave', 'scroll']) $app.addEventListener(t, () => clearTimeout(holdTimer), true);
 $app.addEventListener('contextmenu', (ev) => ev.preventDefault());
@@ -701,6 +913,8 @@ $picker.addEventListener('change', async () => {
 App.addListener('appStateChange', ({ isActive }) => {
   if (isActive) {
     if (st.screen === 'settings') refreshMedia().then(render);
+    if (installPending) { installPending = false; Nider.installUpdate({}).catch(() => {}); }
+    else if (st.screen === 'gallery' && !st.picking) loadLibrary();
     setTimeout(() => { st.picking = false; }, 1500);
     return;
   }
@@ -718,7 +932,11 @@ App.addListener('backButton', () => {
   if (st.screen === 'settings') return actions.closeSettings();
   if (st.folder) return actions.up();
   if (st.space) return lock(false);
+  if (st.gsel) return actions.gselClear();
+  if (st.album) return actions.albumUp();
   App.minimizeApp();
 });
 
 render();
+loadLibrary();
+setTimeout(() => checkUpdate(false), 1500);
