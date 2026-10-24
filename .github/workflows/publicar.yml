@@ -2,7 +2,8 @@ name: Publicar versão
 
 # Monta o APK assinado com a chave definitiva e cria a release vX.Y.Z (versão do
 # package.json). As novidades vêm de novidades/<versão>.md. O Nider Downloads lê
-# essa release e mostra o card com a versão e as novidades.
+# essa release e mostra o card com a versão e as novidades. O Android SDK já vem
+# instalado no ubuntu-latest (ANDROID_HOME).
 on:
   workflow_dispatch:
 
@@ -13,19 +14,17 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
-
-      - uses: android-actions/setup-android@v3
 
       - name: Versão
         id: v
