@@ -122,3 +122,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .more { height: 1px; margin-bottom: 120px; }
 .favmark { position: absolute; left: 6px; top: 6px; }
 .actions button { min-width: 0; }
+.busy-wrap { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(4,6,8,.55); }
+.busy-wrap[hidden] { display: none; }
+.busy-card { min-width: 200px; max-width: 80vw; padding: 26px 24px 22px; border-radius: 24px; background: #171D24; display: flex; flex-direction: column; align-items: center; gap: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
+.busy-card b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; min-height: 0; }
+.busy-card b:empty { display: none; }
+.busy-card span { font-size: 15px; color: var(--soft); text-align: center; }
+.hex { animation: hexspin 1.6s linear infinite; }
+.hex-run { stroke-dasharray: 60 200; animation: hexrun 1.2s ease-in-out infinite; }
+@keyframes hexspin { to { transform: rotate(360deg); } }
+@keyframes hexrun { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -260; } }
+@media (prefers-reduced-motion: reduce) { .hex, .hex-run { animation: none; } }

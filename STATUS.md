@@ -1,5 +1,12 @@
 # Nider Galeria — status 24/10/2026
 
+## 2.3.1 beta — ajustes (branch `feat/2.3.1`)
+
+- **Segurar o ícone do menu não abria o Forte no celular:** no Android o toque longo sobre `<img>` cancela o pointer (o `pointercancel`/`pointerleave` limpava o temporizador). Agora o `contextmenu` do toque longo também dispara o "segurar", o `pointerleave` não cancela mais (só mover o dedo mais de 12 px), e a imagem do ícone não recebe o toque.
+- **Carregando:** `busy()`/`idle()` mostram o hexágono do Nider girando no meio da tela, fora do `#app`, mudando só o texto e a porcentagem (antes o toast redesenhava a tela a cada 1% e piscava). Usado em atualização, ocultar, mover, copiar e restaurar.
+- **Até onde foi:** PR para a `main` + workflow **Publicar versão** → release `v2.3.1-beta`.
+
+
 ## 2.3.0 beta — Organizar (branch `feat/2.3-organizar`)
 
 - Rolagem infinita (sentinela + IntersectionObserver, lotes de 600) e a posição da lista guardada por tela (o `render()` recria o DOM).
