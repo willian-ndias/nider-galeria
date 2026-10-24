@@ -25,12 +25,12 @@
 
         </activity>
 
-        <!-- "Compartilhar → Nider Forte": guarda sem senha e volta para o app de origem. -->
+        <!-- "Compartilhar → Ocultar": guarda no Forte sem senha e volta para o app de origem. O nome e o ícone não falam em cofre, de propósito. -->
         <activity
             android:name=".ForteShareActivity"
-            android:label="Nider Forte"
-            android:icon="@mipmap/ic_forte"
-            android:roundIcon="@mipmap/ic_forte"
+            android:label="Ocultar"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true"
             android:noHistory="true"
@@ -42,6 +42,24 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
                 <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity>
+
+        <!-- "Compartilhar → Nider Fotos": escolhe a pasta e Copiar ou Mover, sem senha. -->
+        <activity
+            android:name=".FotosShareActivity"
+            android:label="Nider Fotos"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
 
@@ -64,4 +82,6 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.MANAGE_MEDIA" />
+    <!-- Instalar a versão nova baixada pelo próprio app (atualização). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 </manifest>
