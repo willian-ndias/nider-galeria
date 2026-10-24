@@ -11,7 +11,7 @@ import { vault, toBase64, fromBase64 } from './vault.js';
 const Nider = registerPlugin('Nider');
 const TRASH = 'lixeira';
 
-const VERSION = '2.3.0 beta';
+const VERSION = '2.3.1 beta';
 const ICON_G = './nider-galeria.svg';
 const ICON_F = './nider-forte.svg';
 
@@ -80,6 +80,7 @@ const svg = {
 };
 
 function say(text) {
+  idle();
   clearTimeout(toastTimer);
   st.toast = text;
   render();
@@ -275,8 +276,7 @@ async function loadTrash() {
 async function toTarget(move) {
   const uris = [...st.gsel];
   const folder = st.target;
-  st.toast = `${move ? 'Movendo' : 'Copiando'} ${uris.length} para ${folder}…`;
-  render();
+  busy(`${move ? 'Movendo' : 'Copiando'} ${uris.length} para ${folder}`);
   st.picking = true;
   try {
     const r = await Nider.copyTo({ uris, folder, move });
@@ -288,6 +288,29 @@ async function toTarget(move) {
   setTimeout(() => { st.picking = false; }, 1500);
   loadLibrary();
 }
+
+// ---------- carregando: hexágono do Nider no meio da tela ----------
+// Fica fora do #app e muda só o texto, para a tela não piscar a cada atualização.
+
+const $busy = document.createElement('div');
+$busy.className = 'busy-wrap';
+$busy.hidden = true;
+$busy.innerHTML = `<div class="busy-card" role="status" aria-live="polite">
+  <svg class="hex" width="72" height="72" viewBox="0 0 100 100" aria-hidden="true">
+    <polygon points="50,6 88,28 88,72 50,94 12,72 12,28" fill="none" stroke="#2A333D" stroke-width="7"/>
+    <polygon class="hex-run" points="50,6 88,28 88,72 50,94 12,72 12,28" fill="none" stroke="#4F8CF7" stroke-width="7" stroke-linejoin="round"/>
+    <polygon points="50,30 67,40 67,60 50,70 33,60 33,40" fill="#4F8CF7" opacity=".9"/>
+  </svg>
+  <b class="busy-pct"></b><span class="busy-text"></span></div>`;
+document.body.appendChild($busy);
+
+function busy(text, pct) {
+  st.toast = null;
+  $busy.hidden = false;
+  $busy.querySelector('.busy-text').textContent = text;
+  $busy.querySelector('.busy-pct').textContent = pct >= 0 ? `${pct}%` : '';
+}
+function idle() { $busy.hidden = true; }
 
 // ---------- atualização pelo app ----------
 
@@ -310,15 +333,15 @@ async function checkUpdate(manual) {
 let installPending = false;
 async function doUpdate() {
   if (!st.update) return;
-  const sub = await Nider.addListener('updateProgress', ({ pct }) => { st.toast = pct >= 0 ? `Baixando a versão nova… ${pct}%` : 'Baixando a versão nova…'; render(); });
+  busy(`Baixando a versão ${st.update.latest}`, 0);
+  const sub = await Nider.addListener('updateProgress', ({ pct }) => busy(`Baixando a versão ${st.update.latest}`, pct));
   try {
     st.picking = true;
     const r = await Nider.installUpdate({ url: st.update.url });
+    idle();
     if (r.needsPermission) { installPending = true; say('Permita instalar apps do Nider Galeria e volte'); }
-    else st.toast = null;
-  } catch (e) { say(e.message || 'O download falhou'); }
+  } catch (e) { idle(); say(e.message || 'O download falhou'); }
   sub.remove();
-  render();
 }
 
 function shownItems() {
@@ -426,7 +449,7 @@ function showForteRow() { return !st.forteExists || forteInMenu(); }
 function viewDrawer() {
   return `<div class="scrim" data-act="closeDrawer"></div>
     <aside class="drawer">
-      <div class="dhead"><button data-hold="logo" aria-label="Nider Galeria" style="border-radius:18px;flex-shrink:0"><img src="${ICON_G}" alt="" width="64" height="64" style="display:block"></button><div><b>Nider Galeria</b><small>${VERSION}</small></div></div>
+      <div class="dhead"><button data-hold="logo" aria-label="Nider Galeria" style="border-radius:18px;flex-shrink:0"><img src="${ICON_G}" alt="" width="64" height="64" draggable="false" style="display:block;pointer-events:none"></button><div><b>Nider Galeria</b><small>${VERSION}</small></div></div>
       <div style="padding:8px 0">
         <button class="row" data-act="tabFotos">${svg.photo}Fotos</button>
         <button class="row" data-act="tabPastas">${svg.folder()}Pastas</button>
@@ -714,8 +737,7 @@ async function addFiles(files) {
   let n = 0;
   for (const file of files) {
     n++;
-    st.toast = `Guardando ${n} de ${files.length}…`;
-    render();
+    busy(`Guardando ${n} de ${files.length}`, Math.round((n - 1) * 100 / files.length));
     await storeOne(sp, folder, { name: file.name, mime: file.type || '', bytes: new Uint8Array(await file.arrayBuffer()) });
   }
   say(`${files.length} ${files.length === 1 ? 'item guardado' : 'itens guardados'} no Forte`);
@@ -748,8 +770,7 @@ async function restoreToGallery(ids) {
     const it = sp.index.items.find((x) => x.id === id);
     if (!it) continue;
     n++;
-    st.toast = `Restaurando ${n} de ${ids.length}…`;
-    render();
+    busy(`Restaurando ${n} de ${ids.length}`, Math.round((n - 1) * 100 / ids.length));
     const tmp = `restaurar/${id}`;
     try {
       await Filesystem.writeFile({ path: tmp, directory: Directory.Cache, data: toBase64(await sp.read(id)), recursive: true });
@@ -803,8 +824,7 @@ const actions = {
   gselAll: () => { const all = galleryList().slice(0, st.libLimit).map((x) => x.uri); st.gsel = st.gsel && st.gsel.length === all.length ? [] : all; render(); },
   gToForte: async () => {
     const uris = [...st.gsel];
-    st.toast = `Ocultando ${uris.length}…`;
-    render();
+    busy(`Ocultando ${uris.length}`);
     st.picking = true;
     try {
       const r = await Nider.toForte({ uris });
@@ -859,8 +879,7 @@ const actions = {
     let folders = [];
     try { folders = (await Nider.niderFolders()).folders; } catch { /* sem pastas */ }
     const exec = async (folder, move) => {
-      st.toast = `${move ? 'Movendo' : 'Copiando'} ${uris.length}…`;
-      render();
+      busy(`${move ? 'Movendo' : 'Copiando'} ${uris.length}`);
       st.picking = true;
       try {
         const r = await Nider.copyTo({ uris, folder, move });
@@ -1046,16 +1065,34 @@ const holds = {
   },
 };
 
+// Segurar: o temporizador cobre o dedo parado; no Android o toque longo também
+// dispara "contextmenu" (e às vezes cancela o pointer), então ele também conta.
 let holdTimer = 0;
 let held = false;
+let holdAt = null;
+const fireHold = (el) => {
+  if (held) return;
+  clearTimeout(holdTimer);
+  held = true;
+  navigator.vibrate?.(20);
+  holds[el.dataset.hold](el.dataset.id || el.dataset.uri);
+};
 $app.addEventListener('pointerdown', (ev) => {
   const el = ev.target.closest('[data-hold]');
   held = false;
+  holdAt = el ? { x: ev.clientX, y: ev.clientY } : null;
   if (!el) return;
-  holdTimer = setTimeout(() => { held = true; navigator.vibrate?.(20); holds[el.dataset.hold](el.dataset.id || el.dataset.uri); }, 480);
+  holdTimer = setTimeout(() => fireHold(el), 480);
 });
-for (const t of ['pointerup', 'pointercancel', 'pointerleave', 'scroll']) $app.addEventListener(t, () => clearTimeout(holdTimer), true);
-$app.addEventListener('contextmenu', (ev) => ev.preventDefault());
+$app.addEventListener('pointermove', (ev) => {
+  if (holdAt && Math.hypot(ev.clientX - holdAt.x, ev.clientY - holdAt.y) > 12) { clearTimeout(holdTimer); holdAt = null; }
+});
+for (const t of ['pointerup', 'pointercancel', 'scroll']) $app.addEventListener(t, () => clearTimeout(holdTimer), true);
+$app.addEventListener('contextmenu', (ev) => {
+  ev.preventDefault();
+  const el = ev.target.closest('[data-hold]');
+  if (el && holdAt) fireHold(el);
+});
 $app.addEventListener('click', (ev) => {
   if (held) { held = false; ev.preventDefault(); return; }
   const el = ev.target.closest('[data-act]');
