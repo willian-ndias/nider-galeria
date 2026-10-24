@@ -1,4 +1,24 @@
-# Nider Galeria — status 22/10/2026
+# Nider Galeria — status 24/10/2026
+
+## 2.1.0 beta (Capacitor) — branch `feat/capacitor-2.1`
+
+O app passou de Kotlin/Compose para **Capacitor** (HTML/JS em `src/`, Android em `android/`). O código Kotlin do Grok ficou guardado em `legado-kotlin/`.
+
+- Pacote `br.com.nider.galeria`, versão `2.1.0-beta` (versionCode 210).
+- Forte com duas senhas: cada espaço tem uma chave de dados aleatória (AES-256-GCM); a senha (PBKDF2-SHA256, 310 mil voltas) só embrulha essa chave. O principal guarda a chave do disfarce, por isso troca ou apaga a senha de disfarce. Nada no disco diz qual espaço é qual.
+- Disfarce com configurações falsas (sem o cartão da senha de disfarce). "Apagar após 10 erros" apaga o Forte inteiro.
+- Fotos com miniatura criptografada à parte; visualizador PhotoSwipe (pinça, toque duplo, arrastar); PDF com pdf.js.
+- Tranca ao sair do app; print bloqueado dentro do Forte (privacy-screen).
+- Galeria e barra de baixo ainda são só o esqueleto ("em breve").
+
+**Até onde foi:** PUSH da branch `feat/capacitor-2.1`. APK de teste (assinatura debug da sessão) entregue ao dev por artefato.
+**Falta:** chave de assinatura definitiva + APK pelo GitHub Actions, atualização pelo app, "Compartilhar → Nider Galeria" com apagar a original, "Devolver à galeria", card no Nider Downloads.
+
+Montar: `npm ci && npm run sync && cd android && ./gradlew assembleDebug` (precisa de `ANDROID_HOME`).
+
+---
+
+# Histórico — status 22/10/2026
 
 Pasta local: `d:\nider-galeria`
 

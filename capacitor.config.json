@@ -1,0 +1,7 @@
+{
+  "appId": "br.com.nider.galeria",
+  "appName": "Nider Galeria",
+  "webDir": "dist",
+  "backgroundColor": "#0E1216",
+  "android": { "allowMixedContent": false }
+}
