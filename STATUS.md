@@ -10,9 +10,12 @@ O app passou de Kotlin/Compose para **Capacitor** (HTML/JS em `src/`, Android em
 - Fotos com miniatura criptografada à parte; visualizador PhotoSwipe (pinça, toque duplo, arrastar); PDF com pdf.js.
 - Tranca ao sair do app; print bloqueado dentro do Forte (privacy-screen).
 - Galeria e barra de baixo ainda são só o esqueleto ("em breve").
+- **Compartilhar → Nider Galeria** (fotos e PDFs, um ou vários): pede a senha, pergunta a pasta, guarda e oferece apagar a original (confirmação do Android 11+). Ponte nativa em `android/app/src/main/java/br/com/nider/galeria/NiderPlugin.java`.
+- **Seleção no Forte** (segurar): Todos, Restaurar para a galeria (sai do Forte e vai para `Pictures/Nider Galeria`, PDF para `Download/Nider Galeria`; Android 10+), Renomear, Excluir.
+- **Lixeira do Forte**: excluir manda para a lixeira; some de vez após 30 dias (limpa ao abrir o Forte). Apagar pasta manda os itens para a lixeira; recuperar sem a pasta cria "Recuperados".
 
 **Até onde foi:** PUSH da branch `feat/capacitor-2.1`. APK de teste (assinatura debug da sessão) entregue ao dev por artefato.
-**Falta:** chave de assinatura definitiva + APK pelo GitHub Actions, atualização pelo app, "Compartilhar → Nider Galeria" com apagar a original, "Devolver à galeria", card no Nider Downloads.
+**Falta:** chave de assinatura definitiva + APK pelo GitHub Actions, atualização pelo app, card no Nider Downloads. Compartilhar, restaurar e lixeira testados só no navegador (a parte nativa compila, falta o teste no celular).
 
 Montar: `npm ci && npm run sync && cd android && ./gradlew assembleDebug` (precisa de `ANDROID_HOME`).
 

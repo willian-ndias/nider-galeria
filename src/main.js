@@ -2,8 +2,14 @@ import './style.css';
 import 'photoswipe/style.css';
 import PhotoSwipe from 'photoswipe';
 import { App } from '@capacitor/app';
+import { registerPlugin } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import { PrivacyScreen } from '@capacitor-community/privacy-screen';
-import { vault } from './vault.js';
+import { vault, toBase64, fromBase64 } from './vault.js';
+
+// Ponte com o Android (android/.../NiderPlugin.java): Compartilhar, apagar original, devolver à galeria.
+const Nider = registerPlugin('Nider');
+const TRASH = 'lixeira';
 
 const VERSION = '2.1.0 beta';
 const ICON_G = './nider-galeria.svg';
@@ -23,6 +29,8 @@ const st = {
   sheet: null,
   wipe: false,
   picking: false,
+  sel: null, // ids selecionados dentro de uma pasta ou da lixeira
+  incoming: null, // arquivos que chegaram pelo Compartilhar
 };
 
 const thumbs = new Map();
@@ -48,6 +56,11 @@ const svg = {
   info: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#C9D2DC" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg>',
   chev: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9AA6B2" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>',
   pdf: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FF9F8A" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>',
+  restore: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V9M7.5 13.5L12 9l4.5 4.5"/><path d="M5 4.5h14"/></svg>',
+  edit: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/></svg>',
+  undo: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
+  close: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  tick: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0E1216" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   eye: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C9D2DC" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12s3.5-6.5 9-6.5 9 6.5 9 6.5-3.5 6.5-9 6.5S3 12 3 12z"/><path d="M4 4l16 16"/></svg>',
 };
 
@@ -81,23 +94,38 @@ function viewGallery() {
     </nav>`;
 }
 
+function shownItems() {
+  const items = st.space.index.items;
+  return st.folder === TRASH ? items.filter((i) => i.trashed) : items.filter((i) => !i.trashed && i.folder === st.folder);
+}
+
+const daysLeft = (t) => Math.max(1, 30 - Math.floor((Date.now() - t) / 86400000));
+
 function viewForte() {
   const sp = st.space;
-  const folder = st.folder && sp.index.folders.find((f) => f.id === st.folder);
-  const total = sp.index.items.length;
+  const inTrash = st.folder === TRASH;
+  const folder = !inTrash && st.folder && sp.index.folders.find((f) => f.id === st.folder);
+  const live = sp.index.items.filter((i) => !i.trashed);
+  const trashed = sp.index.items.filter((i) => i.trashed);
+  const sel = st.sel;
   let body;
-  if (folder) {
-    const items = sp.index.items.filter((i) => i.folder === folder.id);
+  if (folder || inTrash) {
+    const items = shownItems();
     body = items.length
-      ? `<div class="grid">${items.map((it) => `
-          <button class="tile" data-act="item" data-id="${it.id}" data-hold="item" ${it.kind === 'foto' ? `data-thumb="${it.id}"` : ''} aria-label="${esc(it.name)}">
+      ? `<div class="grid">${items.map((it) => {
+          const on = sel && sel.includes(it.id);
+          return `<button class="tile ${on ? 'picked' : ''}" data-act="item" data-id="${it.id}" data-hold="item" ${it.kind === 'foto' ? `data-thumb="${it.id}"` : ''} aria-label="${esc(it.name)}" aria-pressed="${on ? 'true' : 'false'}">
             ${it.kind === 'pdf' ? `${svg.pdf}<span class="pdf">PDF</span>` : ''}
-            <span class="name">${esc(it.name)}</span>
-          </button>`).join('')}</div>`
-      : '<div class="empty"><b>Pasta vazia</b><p>Toque em Adicionar para guardar fotos e PDFs aqui. Eles ficam criptografados.</p></div>';
+            ${sel ? `<span class="check ${on ? 'on' : ''}">${on ? svg.tick : ''}</span>` : ''}
+            <span class="name">${inTrash ? `${daysLeft(it.trashed)} ${daysLeft(it.trashed) === 1 ? 'dia' : 'dias'}` : esc(it.name)}</span>
+          </button>`;
+        }).join('')}</div>`
+      : inTrash
+        ? '<div class="empty"><b>A lixeira está vazia</b><p>O que você excluir fica aqui por 30 dias e depois some de vez.</p></div>'
+        : '<div class="empty"><b>Pasta vazia</b><p>Toque em Adicionar, ou compartilhe fotos e PDFs da galeria para o Nider Galeria. Eles ficam criptografados.</p></div>';
   } else {
     body = `<div class="folders">${sp.index.folders.map((f) => {
-      const items = sp.index.items.filter((i) => i.folder === f.id);
+      const items = live.filter((i) => i.folder === f.id);
       const photos = items.filter((i) => i.kind === 'foto').slice(0, 4);
       const cells = [0, 1, 2, 3].map((n) => `<i ${photos[n] ? `data-thumb="${photos[n].id}"` : ''}></i>`).join('');
       return `<button class="folder" data-act="folder" data-id="${f.id}" data-hold="folder">
@@ -106,17 +134,26 @@ function viewForte() {
         </button>`;
     }).join('')}
       <button class="folder" data-act="newFolder"><div class="newcard">${svg.folderPlus}</div><b style="color:#C9D2DC">Nova pasta</b></button>
+      <button class="folder" data-act="folder" data-id="${TRASH}"><div class="newcard trashcard">${svg.trash}</div><b style="color:#C9D2DC">Lixeira</b><small>${plural(trashed.length)}</small></button>
     </div>`;
   }
+  const head = sel
+    ? `<button class="ib" data-act="selClear" aria-label="Cancelar seleção">${svg.close}</button>
+       <div class="title"><b>${sel.length} ${sel.length === 1 ? 'selecionado' : 'selecionados'}</b></div>
+       <button class="pill" data-act="selAll">Todos</button>`
+    : `${folder || inTrash ? `<button class="ib" data-act="up" aria-label="Voltar às pastas">${svg.back}</button>` : ''}
+       <div class="title"><b>${inTrash ? 'Lixeira' : folder ? esc(folder.name) : 'Forte'}</b><small>${inTrash ? 'Some de vez em 30 dias · segure para selecionar' : folder ? `${plural(shownItems().length)} · segure para selecionar` : `${plural(live.length)} · tranca ao sair`}</small></div>
+       ${folder || inTrash ? '' : `<button class="ib" data-act="settings" aria-label="Configurações do Forte">${svg.gear}</button>`}
+       <button class="pill" data-act="lock">${svg.lock}Trancar</button>`;
+  const n = sel ? sel.length : 0;
+  const bar = !sel ? '' : inTrash
+    ? `<nav class="actions"><button data-act="untrashSel" ${n ? '' : 'disabled'}>${svg.undo}Recuperar</button><button data-act="purgeSel" class="bad" ${n ? '' : 'disabled'}>${svg.trash}Excluir de vez</button></nav>`
+    : `<nav class="actions"><button data-act="restoreSel" ${n ? '' : 'disabled'}>${svg.restore}Restaurar</button><button data-act="renameSel" ${n === 1 ? '' : 'disabled'}>${svg.edit}Renomear</button><button data-act="trashSel" class="bad" ${n ? '' : 'disabled'}>${svg.trash}Excluir</button></nav>`;
   return `
-    <header class="top">
-      ${folder ? `<button class="ib" data-act="up" aria-label="Voltar às pastas">${svg.back}</button>` : ''}
-      <div class="title"><b>${folder ? esc(folder.name) : 'Forte'}</b><small>${folder ? plural(sp.index.items.filter((i) => i.folder === folder.id).length) : `${plural(total)} · tranca ao sair`}</small></div>
-      ${folder ? '' : `<button class="ib" data-act="settings" aria-label="Configurações do Forte">${svg.gear}</button>`}
-      <button class="pill" data-act="lock">${svg.lock}Trancar</button>
-    </header>
+    <header class="top">${head}</header>
     <main class="main">${body}</main>
-    ${folder ? `<button class="fab" data-act="add">${svg.plus}Adicionar</button>` : ''}`;
+    ${bar}
+    ${folder && !sel ? `<button class="fab" data-act="add">${svg.plus}Adicionar</button>` : ''}`;
 }
 
 function viewSettings() {
@@ -171,7 +208,7 @@ function viewDrawer() {
 }
 
 const PIN_TEXT = {
-  unlock: () => ['Nider Forte', 'Digite a senha'],
+  unlock: () => ['Nider Forte', st.incoming ? `Digite a senha para guardar ${plural(st.incoming.length)}` : 'Digite a senha'],
   create: (s) => s === 1 ? ['Crie a senha principal', 'Ela abre o seu Forte e as configurações dele'] : ['Repita a senha principal', 'Para confirmar'],
   change: (s) => s === 1 ? ['Nova senha principal', '4 números'] : ['Repita a nova senha', 'Para confirmar'],
   decoy: (s) => s === 1 ? ['Senha de disfarce', 'Ela abre só o Forte secundário'] : ['Repita a senha de disfarce', 'Para confirmar'],
@@ -212,7 +249,7 @@ function viewSheet() {
   const s = st.sheet;
   return `<div class="sheet-wrap" data-act="sheetClose"><div class="sheet">
     <div class="grip"></div><div class="head">${esc(s.title)}</div>
-    ${s.options.map((o, i) => `<button class="row" data-act="sheetPick" data-i="${i}" style="${o.danger ? 'color:#FFB4A8' : ''}">${o.label}</button>`).join('')}
+    ${s.options.map((o, i) => `<button class="row" data-act="sheetPick" data-i="${i}" style="${o.danger ? 'color:#FFB4A8' : ''}">${esc(o.label)}</button>`).join('')}
   </div></div>`;
 }
 
@@ -334,7 +371,9 @@ async function enter(space) {
   st.pin = null;
   st.wipe = space.primary ? await vault.getWipe() : false;
   try { await PrivacyScreen.enable(); } catch { /* web */ }
+  space.purgeTrash().catch(() => {});
   render();
+  if (st.incoming) offerIncoming();
 }
 
 function lock(quiet) {
@@ -346,6 +385,7 @@ function lock(quiet) {
   thumbSync.clear();
   st.space = null;
   st.folder = null;
+  st.sel = null;
   st.screen = 'gallery';
   st.sheet = null;
   st.dialog = null;
@@ -402,6 +442,19 @@ async function makeThumb(file) {
   return out;
 }
 
+async function storeOne(sp, folder, { name, mime, bytes }) {
+  const isPdf = mime === 'application/pdf' || /\.pdf$/i.test(name);
+  const isImg = mime.startsWith('image/');
+  if (!isPdf && !isImg) return false;
+  let meta = { name, mime: mime || (isPdf ? 'application/pdf' : 'image/jpeg'), kind: isPdf ? 'pdf' : 'foto', size: bytes.length };
+  let thumb = null;
+  if (isImg) {
+    try { const t = await makeThumb(new Blob([bytes], { type: mime })); thumb = t.thumb; meta = { ...meta, w: t.w, h: t.h }; } catch { /* formato sem decodificador: guarda sem miniatura */ }
+  }
+  await sp.addItem(folder, meta, bytes, thumb);
+  return true;
+}
+
 async function addFiles(files) {
   const sp = st.space;
   const folder = st.folder;
@@ -411,18 +464,106 @@ async function addFiles(files) {
     n++;
     st.toast = `Guardando ${n} de ${files.length}…`;
     render();
-    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-    const isImg = file.type.startsWith('image/');
-    if (!isPdf && !isImg) continue;
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let meta = { name: file.name, mime: file.type || (isPdf ? 'application/pdf' : 'image/jpeg'), kind: isPdf ? 'pdf' : 'foto', size: file.size };
-    let thumb = null;
-    if (isImg) {
-      try { const t = await makeThumb(file); thumb = t.thumb; meta = { ...meta, w: t.w, h: t.h }; } catch { /* formato sem decodificador: guarda sem miniatura */ }
-    }
-    await sp.addItem(folder, meta, bytes, thumb);
+    await storeOne(sp, folder, { name: file.name, mime: file.type || '', bytes: new Uint8Array(await file.arrayBuffer()) });
   }
   say(`${files.length} ${files.length === 1 ? 'item guardado' : 'itens guardados'} no Forte`);
+}
+
+// ---------- Compartilhar → Nider Galeria ----------
+
+async function checkShared() {
+  try {
+    const { files } = await Nider.takeShared();
+    if (!files || !files.length) return;
+    st.incoming = files;
+    st.drawer = false;
+    if (st.space) offerIncoming();
+    else openPin((await vault.exists()) ? 'unlock' : 'create');
+  } catch { /* fora do Android */ }
+}
+
+function dropIncoming() {
+  st.incoming = null;
+  Nider.clearShared().catch(() => {});
+}
+
+function offerIncoming() {
+  const files = st.incoming;
+  if (!files || !st.space) return;
+  const options = st.space.index.folders.map((f) => ({ label: f.name, run: () => saveIncoming(f.id) }));
+  options.push({ label: '+ Nova pasta', run: async () => {
+    const name = await ask({ title: 'Nova pasta', input: '', placeholder: 'Ex.: Documentos', ok: 'Criar' });
+    if (!name) return dropIncoming();
+    const f = await st.space.addFolder(name);
+    saveIncoming(f.id);
+  } });
+  st.sheet = { title: `Guardar ${plural(files.length)} em qual pasta?`, options, onCancel: dropIncoming };
+  render();
+}
+
+async function saveIncoming(folderId) {
+  const files = st.incoming;
+  const sp = st.space;
+  st.incoming = null;
+  if (!files || !sp) return;
+  st.folder = folderId;
+  st.sel = null;
+  const media = [];
+  let saved = 0;
+  for (const f of files) {
+    st.toast = `Guardando ${saved + 1} de ${files.length}…`;
+    render();
+    try {
+      const r = await Filesystem.readFile({ path: `file://${f.path}` });
+      if (await storeOne(sp, folderId, { name: f.name, mime: f.mime || '', bytes: fromBase64(r.data) })) {
+        saved++;
+        if (f.media) media.push(f.media);
+      }
+    } catch (e) { console.error(e); }
+  }
+  await Nider.clearShared().catch(() => {});
+  if (!saved) return say('Nenhum arquivo pôde ser guardado. O Forte aceita fotos e PDFs');
+  say(`${plural(saved)} no Forte`);
+  if (!media.length) {
+    if (saved) setTimeout(() => say('Guardado. Se quiser, apague a original no app de fotos'), 3300);
+    return;
+  }
+  const ok = await ask({ title: 'Apagar a original da galeria?', text: `${media.length === 1 ? 'A foto já está segura' : 'As fotos já estão seguras'} no Forte. O Android vai pedir para confirmar.`, ok: 'Apagar original' });
+  if (!ok) return;
+  st.picking = true;
+  try {
+    const r = await Nider.deleteOriginals({ uris: media });
+    say(r.deleted ? 'Original apagada da galeria' : 'A original continua na galeria');
+  } catch { say('Não consegui apagar a original. Apague no app de fotos'); }
+  setTimeout(() => { st.picking = false; }, 1500);
+}
+
+// ---------- seleção: restaurar, renomear, excluir ----------
+
+async function restoreToGallery(ids) {
+  const sp = st.space;
+  const done = [];
+  let n = 0;
+  for (const id of ids) {
+    const it = sp.index.items.find((x) => x.id === id);
+    if (!it) continue;
+    n++;
+    st.toast = `Restaurando ${n} de ${ids.length}…`;
+    render();
+    const tmp = `restaurar/${id}`;
+    try {
+      await Filesystem.writeFile({ path: tmp, directory: Directory.Cache, data: toBase64(await sp.read(id)), recursive: true });
+      const { uri } = await Filesystem.getUri({ path: tmp, directory: Directory.Cache });
+      await Nider.saveToGallery({ path: decodeURI(uri.replace(/^file:\/\//, '')), name: it.name, mime: it.mime });
+      done.push(id);
+    } catch (e) { console.error(e); }
+    await Filesystem.deleteFile({ path: tmp, directory: Directory.Cache }).catch(() => {});
+  }
+  if (done.length) await sp.deleteItems(done);
+  st.sel = null;
+  say(done.length === ids.length
+    ? `${plural(done.length)} de volta na galeria, na pasta Nider Galeria`
+    : `${done.length} de ${ids.length} restaurados. Os outros continuam no Forte`);
 }
 
 // ---------- ações ----------
@@ -448,10 +589,44 @@ const actions = {
     render();
     if (p.value.length === 4) setTimeout(() => pinSubmit(p.value), 150);
   },
-  cancelPin: () => { st.pin = null; render(); },
+  cancelPin: () => { st.pin = null; if (st.incoming) dropIncoming(); render(); },
   lock: () => lock(false),
-  folder: (el) => { st.folder = el.dataset.id; render(); },
-  up: () => { st.folder = null; render(); },
+  folder: (el) => { st.folder = el.dataset.id; st.sel = null; render(); },
+  up: () => { st.folder = null; st.sel = null; render(); },
+  selClear: () => { st.sel = null; render(); },
+  selAll: () => { const all = shownItems().map((i) => i.id); st.sel = st.sel && st.sel.length === all.length ? [] : all; render(); },
+  restoreSel: async () => {
+    const ids = [...st.sel];
+    if (!(await ask({ title: `Restaurar ${plural(ids.length)} para a galeria?`, text: 'Eles saem do Forte e voltam para a galeria do celular, na pasta Nider Galeria.', ok: 'Sim, restaurar' }))) return;
+    await restoreToGallery(ids);
+  },
+  renameSel: async () => {
+    const it = st.space.index.items.find((i) => i.id === st.sel[0]);
+    const name = await ask({ title: 'Renomear', input: it.name, ok: 'Salvar' });
+    if (!name) return;
+    await st.space.renameItem(it.id, name);
+    st.sel = null;
+    say('Nome trocado');
+  },
+  trashSel: async () => {
+    const ids = [...st.sel];
+    await st.space.trash(ids);
+    st.sel = null;
+    say(`${plural(ids.length)} na lixeira. Some de vez em 30 dias`);
+  },
+  untrashSel: async () => {
+    const ids = [...st.sel];
+    await st.space.untrash(ids);
+    st.sel = null;
+    say(`${plural(ids.length)} de volta no Forte`);
+  },
+  purgeSel: async () => {
+    const ids = [...st.sel];
+    if (!(await ask({ title: `Excluir ${plural(ids.length)} de vez?`, text: 'Não dá para desfazer.', ok: 'Excluir de vez', danger: true }))) return;
+    await st.space.deleteItems(ids);
+    st.sel = null;
+    say('Excluído de vez');
+  },
   settings: () => { st.screen = 'settings'; render(); },
   closeSettings: () => { st.screen = 'forte'; render(); },
   changePin: () => openPin('change'),
@@ -477,6 +652,12 @@ const actions = {
   item: async (el) => {
     const item = st.space.index.items.find((i) => i.id === el.dataset.id);
     if (!item) return;
+    if (st.sel || st.folder === TRASH) {
+      const sel = st.sel || [];
+      st.sel = sel.includes(item.id) ? sel.filter((x) => x !== item.id) : [...sel, item.id];
+      render();
+      return;
+    }
     try {
       if (item.kind === 'pdf') await openPdf(item);
       else {
@@ -494,20 +675,14 @@ const actions = {
     d.resolve(value);
   },
   dlgCancel: () => { const d = st.dialog; st.dialog = null; render(); d.resolve(null); },
-  sheetClose: (el, ev) => { if (ev.target === el) { st.sheet = null; render(); } },
+  sheetClose: (el, ev) => { if (ev.target === el) { const c = st.sheet.onCancel; st.sheet = null; render(); if (c) c(); } },
   sheetPick: (el) => { const o = st.sheet.options[Number(el.dataset.i)]; st.sheet = null; render(); o.run(); },
 };
 
 const holds = {
   item: (id) => {
-    const it = st.space.index.items.find((i) => i.id === id);
-    st.sheet = { title: it.name, options: [
-      { label: 'Apagar do Forte', danger: true, run: async () => {
-        if (!(await ask({ title: 'Apagar este item?', text: 'Ele some do Forte para sempre.', ok: 'Apagar', danger: true }))) return;
-        await st.space.deleteItem(id);
-        say('Item apagado');
-      } },
-    ] };
+    const sel = st.sel || [];
+    if (!sel.includes(id)) st.sel = [...sel, id];
     render();
   },
   folder: (id) => {
@@ -562,7 +737,8 @@ App.addListener('backButton', () => {
   if (pswp) return pswp.close();
   if (pdfClose) return pdfClose();
   if (st.dialog) return actions.dlgCancel();
-  if (st.sheet) { st.sheet = null; return render(); }
+  if (st.sheet) { const c = st.sheet.onCancel; st.sheet = null; render(); if (c) c(); return; }
+  if (st.sel) return actions.selClear();
   if (st.pin) return actions.cancelPin();
   if (st.drawer) return actions.closeDrawer();
   if (st.screen === 'settings') return actions.closeSettings();
@@ -572,3 +748,5 @@ App.addListener('backButton', () => {
 });
 
 render();
+Nider.addListener('shared', checkShared).catch(() => {});
+checkShared();

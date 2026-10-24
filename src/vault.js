@@ -108,9 +108,10 @@ export class OpenSpace {
     const f = this.index.folders.find((x) => x.id === id);
     if (f) { f.name = name; await this.save(); }
   }
+  // Apagar a pasta manda o que estava nela para a lixeira.
   async deleteFolder(id) {
-    for (const it of this.index.items.filter((x) => x.folder === id)) await this.dropFiles(it.id);
-    this.index.items = this.index.items.filter((x) => x.folder !== id);
+    const now = Date.now();
+    for (const it of this.index.items) if (it.folder === id && !it.trashed) it.trashed = now;
     this.index.folders = this.index.folders.filter((x) => x.id !== id);
     await this.save();
   }
@@ -127,6 +128,38 @@ export class OpenSpace {
   async dropFiles(id) {
     await remove(`${ROOT}/${this.id}/${id}.bin`);
     await remove(`${ROOT}/${this.id}/${id}.t.bin`);
+  }
+  async renameItem(id, name) {
+    const it = this.index.items.find((x) => x.id === id);
+    if (it) { it.name = name; await this.save(); }
+  }
+  // Lixeira: o item fica guardado (criptografado) e some de vez depois de 30 dias.
+  async trash(ids) {
+    const now = Date.now();
+    for (const it of this.index.items) if (ids.includes(it.id)) it.trashed = now;
+    await this.save();
+  }
+  async untrash(ids) {
+    for (const it of this.index.items) {
+      if (!ids.includes(it.id)) continue;
+      delete it.trashed;
+      if (!this.index.folders.some((f) => f.id === it.folder)) {
+        let back = this.index.folders.find((f) => f.name === 'Recuperados');
+        if (!back) { back = { id: uid(), name: 'Recuperados' }; this.index.folders.push(back); }
+        it.folder = back.id;
+      }
+    }
+    await this.save();
+  }
+  async deleteItems(ids) {
+    for (const id of ids) await this.dropFiles(id);
+    this.index.items = this.index.items.filter((x) => !ids.includes(x.id));
+    await this.save();
+  }
+  async purgeTrash(days = 30) {
+    const limit = Date.now() - days * 86400000;
+    const old = this.index.items.filter((x) => x.trashed && x.trashed < limit).map((x) => x.id);
+    if (old.length) await this.deleteItems(old);
   }
   async deleteItem(id) {
     await this.dropFiles(id);
@@ -245,3 +278,4 @@ export const vault = {
     await writeConfig(cfg);
   },
 };
+export { b64 as toBase64, unb64 as fromBase64 };
