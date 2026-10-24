@@ -1,4 +1,31 @@
-# Nider Galeria — status 22/10/2026
+# Nider Galeria — status 24/10/2026
+
+## 2.1.0 beta (Capacitor) — branch `feat/capacitor-2.1`
+
+O app passou de Kotlin/Compose para **Capacitor** (HTML/JS em `src/`, Android em `android/`). O código Kotlin do Grok ficou guardado em `legado-kotlin/`.
+
+- Pacote `br.com.nider.galeria`, versão `2.1.0-beta` (versionCode 210).
+- Forte com duas senhas: cada espaço tem uma chave de dados aleatória (AES-256-GCM); a senha (PBKDF2-SHA256, 310 mil voltas) só embrulha essa chave. O principal guarda a chave do disfarce, por isso troca ou apaga a senha de disfarce. Nada no disco diz qual espaço é qual.
+- Disfarce com configurações falsas (sem o cartão da senha de disfarce). "Apagar após 10 erros" apaga o Forte inteiro.
+- Fotos com miniatura criptografada à parte; visualizador PhotoSwipe (pinça, toque duplo, arrastar); PDF com pdf.js.
+- Tranca ao sair do app; print bloqueado dentro do Forte (privacy-screen).
+- Galeria e barra de baixo ainda são só o esqueleto ("em breve").
+- **Compartilhar → Nider Forte** (fotos e PDFs, um ou vários): guarda **sem senha** e volta para o app de origem (`ForteShareActivity.java`, tela transparente). Cada arquivo vai com uma chave AES nova, trancada pela chave pública RSA-OAEP da caixa de entrada (`config.json`, campo `inbox`); a privada fica só no índice do principal. Ao abrir com a senha principal, o que chegou vai para a pasta **Recebidos**. A original some da galeria: sem pergunta se "Gerenciar mídia" estiver liberado (Configurações do Forte → "Sumir da galeria sem perguntar"), senão com a confirmação do Android. Foto só da nuvem do Google Fotos não tem como ser apagada daqui. A Galeria da Xiaomi manda o caminho do arquivo em vez do endereço do catálogo: a original é procurada no MediaStore por esse caminho (precisa da liberação de ver as fotos). Quando a original não é achada, o aviso diz que ela continua na galeria.
+- **Mover** entre pastas do Forte na seleção.
+- **Seleção no Forte** (segurar): Todos, Restaurar para a galeria (sai do Forte e vai para `Pictures/Nider Galeria`, PDF para `Download/Nider Galeria`; Android 10+), Renomear, Excluir.
+- **Lixeira do Forte**: excluir manda para a lixeira; some de vez após 30 dias (limpa ao abrir o Forte). Apagar pasta manda os itens para a lixeira; recuperar sem a pasta cria "Recuperados".
+
+**Publicar uma versão (desde a 2.1.0 beta oficial):** subir `version` no `package.json` e `versionCode`/`versionName` em `android/app/build.gradle`, escrever `novidades/<versão>.md`, juntar na `main` e rodar o workflow **Publicar versão** (Actions → Run workflow). Ele monta o APK assinado com a chave definitiva e cria a release `v<versão>`; o Nider Downloads lê a release.
+- Chave definitiva: `android/nider-galeria.jks.enc` (criptografada; alias `nider-galeria`). A senha fica só no segredo `NIDER_KEYSTORE_PASSWORD` do repositório. **Perder a senha = não dá mais para atualizar por cima** (tem que desinstalar). Os testes 1–6 usaram a chave debug da sessão e precisam ser desinstalados uma vez.
+
+**Até onde foi:** PUSH da branch `feat/capacitor-2.1` + PR para a `main`. Falta o dev criar o segredo `NIDER_KEYSTORE_PASSWORD` e rodar o workflow; depois, card no Nider Downloads (develop → master no repo do Nider).
+**Falta:** atualização pelo app (2.2.0). Compartilhar, restaurar e lixeira testados só no navegador (a parte nativa compila, falta o teste no celular).
+
+Montar: `npm ci && npm run sync && cd android && ./gradlew assembleDebug` (precisa de `ANDROID_HOME`).
+
+---
+
+# Histórico — status 22/10/2026
 
 Pasta local: `d:\nider-galeria`
 

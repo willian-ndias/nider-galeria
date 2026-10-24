@@ -1,0 +1,70 @@
+name: Publicar versão
+
+# Monta o APK assinado com a chave definitiva e cria a release vX.Y.Z (versão do
+# package.json). As novidades vêm de novidades/<versão>.md. O Nider Downloads lê
+# essa release e mostra o card com a versão e as novidades.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Versão
+        id: v
+        run: |
+          VERSAO=$(node -p "require('./package.json').version")
+          echo "versao=$VERSAO" >> "$GITHUB_OUTPUT"
+          test -f "novidades/$VERSAO.md" || { echo "Falta novidades/$VERSAO.md"; exit 1; }
+          if gh release view "v$VERSAO" >/dev/null 2>&1; then echo "A release v$VERSAO já existe"; exit 1; fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: App web
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - name: Chave de assinatura
+        env:
+          NIDER_KEYSTORE_PASSWORD: ${{ secrets.NIDER_KEYSTORE_PASSWORD }}
+        run: |
+          test -n "$NIDER_KEYSTORE_PASSWORD" || { echo "Falta o segredo NIDER_KEYSTORE_PASSWORD"; exit 1; }
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in android/nider-galeria.jks.enc -out "$RUNNER_TEMP/nider.jks" -pass env:NIDER_KEYSTORE_PASSWORD
+
+      - name: APK
+        working-directory: android
+        env:
+          NIDER_KEYSTORE: ${{ runner.temp }}/nider.jks
+          NIDER_KEYSTORE_PASSWORD: ${{ secrets.NIDER_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/nider-galeria-${{ steps.v.outputs.versao }}.apk"
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${{ steps.v.outputs.versao }}
+          FLAG=""
+          case "$V" in *-*) FLAG="--prerelease";; esac
+          gh release create "v$V" "nider-galeria-$V.apk" --title "Nider Galeria $V" --notes-file "novidades/$V.md" --target "$GITHUB_SHA" $FLAG
+          echo "✓ v$V publicada"
