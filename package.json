@@ -1,7 +1,7 @@
 {
   "name": "nider-galeria",
   "private": true,
-  "version": "2.2.1-beta",
+  "version": "2.3.0-beta",
   "type": "module",
   "scripts": {
     "dev": "vite",

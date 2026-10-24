@@ -1,5 +1,15 @@
 # Nider Galeria — status 24/10/2026
 
+## 2.3.0 beta — Organizar (branch `feat/2.3-organizar`)
+
+- Rolagem infinita (sentinela + IntersectionObserver, lotes de 600) e a posição da lista guardada por tela (o `render()` recria o DOM).
+- **Favoritos** = favorito do Android (`IS_FAVORITE`, `createFavoriteRequest`); vale para as outras galerias. Seleção ganha Favoritar/Desfavoritar.
+- **Lixeira** = lixeira do Android (`QUERY_ARG_MATCH_TRASHED`, some em 30 dias pelo próprio sistema); Restaurar (`createTrashRequest(false)`) e Apagar de vez (`createDeleteRequest`). Com "Gerenciar mídia" não pergunta.
+- **Nova pasta** na aba Pastas: nome → escolher fotos → Mover para cá / Copiar para cá (`Pictures/Nider Galeria/<pasta>`).
+- **Compartilhar → Nider Fotos** em folha de baixo no visual do Nider (`FotosShareActivity`, views nativas).
+- **Até onde foi:** PR para a `main` + workflow **Publicar versão** → release `v2.3.0-beta`.
+
+
 ## 2.2.1 beta — branch `feat/2.2-galeria` (a 2.2.0 só existiu como teste)
 
 - **Galeria do celular:** abas Fotos (por mês) e Pastas (por pasta do Android) leem o MediaStore (`listMedia` no `NiderPlugin`); miniaturas por `loadThumbnail` em lotes de 24 conforme aparecem na tela; visualizador PhotoSwipe abre a foto copiada para o cache (`viewPath`, limpa ao fechar); vídeo abre no player do celular.

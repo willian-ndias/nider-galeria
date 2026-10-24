@@ -7,8 +7,8 @@ android {
         applicationId "br.com.nider.galeria"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 221
-        versionName "2.2.1-beta"
+        versionCode 230
+        versionName "2.3.0-beta"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
