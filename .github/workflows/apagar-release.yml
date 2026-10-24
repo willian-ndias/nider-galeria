@@ -1,0 +1,24 @@
+name: Apagar versão
+
+# Apaga uma release e a tag dela (ex.: v1.0.0). Não tem volta.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag da release a apagar (ex. v1.0.0)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  apagar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apagar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          echo "✓ $TAG apagada"
