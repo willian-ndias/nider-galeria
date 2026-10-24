@@ -5,6 +5,7 @@ import android.app.PendingIntent;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.os.Bundle;
 import android.content.ContentUris;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -198,18 +199,55 @@ public class NiderPlugin extends Plugin {
     /** Todas as fotos e vídeos do celular, do mais novo para o mais antigo (só os dados, sem imagem). */
     @PluginMethod
     public void listMedia(PluginCall call) {
+        try {
+            call.resolve(new JSObject().put("items", queryMedia(false)));
+        } catch (Exception e) {
+            call.reject("Não consegui ler a galeria");
+        }
+    }
+
+    /** O que está na lixeira do Android (some sozinho em 30 dias). */
+    @PluginMethod
+    public void listTrash(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            call.resolve(new JSObject().put("items", new JSArray()));
+            return;
+        }
+        try {
+            call.resolve(new JSObject().put("items", queryMedia(true)));
+        } catch (Exception e) {
+            call.reject("Não consegui ler a lixeira");
+        }
+    }
+
+    private JSArray queryMedia(boolean trashed) throws Exception {
         JSArray items = new JSArray();
-        Uri table = MediaStore.Files.getContentUri("external");
-        String[] cols = {
+        boolean r = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R;
+        List<String> cols = new ArrayList<>(java.util.Arrays.asList(
             MediaStore.Files.FileColumns._ID, MediaStore.Files.FileColumns.MEDIA_TYPE,
             MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE,
             MediaStore.MediaColumns.DATE_TAKEN, MediaStore.MediaColumns.DATE_MODIFIED,
             MediaStore.MediaColumns.WIDTH, MediaStore.MediaColumns.HEIGHT,
             MediaStore.MediaColumns.BUCKET_ID, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
-            MediaStore.MediaColumns.DURATION,
-        };
+            MediaStore.MediaColumns.DURATION, MediaStore.MediaColumns.RELATIVE_PATH));
+        if (r) {
+            cols.add(MediaStore.MediaColumns.IS_FAVORITE);
+            cols.add(MediaStore.MediaColumns.DATE_EXPIRES);
+        }
         String sel = MediaStore.Files.FileColumns.MEDIA_TYPE + " IN (" + MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE + "," + MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO + ")";
-        try (Cursor c = getContext().getContentResolver().query(table, cols, sel, null, MediaStore.MediaColumns.DATE_MODIFIED + " DESC")) {
+        String order = MediaStore.MediaColumns.DATE_MODIFIED + " DESC";
+        Uri table = MediaStore.Files.getContentUri("external");
+        Cursor c;
+        if (r) {
+            Bundle args = new Bundle();
+            args.putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, sel);
+            args.putString(android.content.ContentResolver.QUERY_ARG_SQL_SORT_ORDER, order);
+            args.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, trashed ? MediaStore.MATCH_ONLY : MediaStore.MATCH_EXCLUDE);
+            c = getContext().getContentResolver().query(table, cols.toArray(new String[0]), args, null);
+        } else {
+            c = getContext().getContentResolver().query(table, cols.toArray(new String[0]), sel, null, order);
+        }
+        try {
             while (c != null && c.moveToNext()) {
                 boolean video = c.getInt(1) == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO;
                 Uri base = video ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
@@ -225,13 +263,57 @@ public class NiderPlugin extends Plugin {
                 o.put("b", c.getString(8));
                 o.put("bn", c.getString(9) == null ? "Sem pasta" : c.getString(9));
                 o.put("d", c.isNull(10) ? 0 : c.getLong(10));
+                o.put("rp", c.getString(11) == null ? "" : c.getString(11));
+                if (r) {
+                    o.put("fav", c.getInt(12) == 1);
+                    if (!c.isNull(13)) o.put("exp", c.getLong(13) * 1000);
+                }
                 items.put(o);
             }
-        } catch (Exception e) {
-            call.reject("Não consegui ler a galeria");
+        } finally {
+            if (c != null) c.close();
+        }
+        return items;
+    }
+
+    private void launchRequest(PluginCall call, PendingIntent pi, int saved) {
+        deleteCall = call;
+        deleteSaved = saved;
+        deleteLauncher.launch(new IntentSenderRequest.Builder(pi.getIntentSender()).build());
+    }
+
+    /** Favoritar ou desfavoritar (o favorito é o do Android, vale para as outras galerias). */
+    @PluginMethod
+    public void favorite(PluginCall call) {
+        List<Uri> uris = urisOf(call);
+        if (uris.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            call.reject("Precisa do Android 11 ou mais novo");
             return;
         }
-        call.resolve(new JSObject().put("items", items));
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", true));
+        launchRequest(call, MediaStore.createFavoriteRequest(getContext().getContentResolver(), uris, on), uris.size());
+    }
+
+    /** Tirar da lixeira do Android. */
+    @PluginMethod
+    public void untrash(PluginCall call) {
+        List<Uri> uris = urisOf(call);
+        if (uris.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            call.reject("Precisa do Android 11 ou mais novo");
+            return;
+        }
+        launchRequest(call, MediaStore.createTrashRequest(getContext().getContentResolver(), uris, false), uris.size());
+    }
+
+    /** Apagar de vez (sem lixeira). */
+    @PluginMethod
+    public void deleteForever(PluginCall call) {
+        List<Uri> uris = urisOf(call);
+        if (uris.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            call.reject("Precisa do Android 11 ou mais novo");
+            return;
+        }
+        launchRequest(call, MediaStore.createDeleteRequest(getContext().getContentResolver(), uris), uris.size());
     }
 
     /** Miniaturas em JPEG (data URL), por endereço. */

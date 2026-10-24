@@ -11,7 +11,7 @@ import { vault, toBase64, fromBase64 } from './vault.js';
 const Nider = registerPlugin('Nider');
 const TRASH = 'lixeira';
 
-const VERSION = '2.2.1 beta';
+const VERSION = '2.3.0 beta';
 const ICON_G = './nider-galeria.svg';
 const ICON_F = './nider-forte.svg';
 
@@ -29,7 +29,9 @@ const st = {
   sheet: null,
   wipe: false,
   picking: false,
-  tab: 'fotos', // fotos | pastas (galeria do celular)
+  tab: 'fotos', // fotos | pastas | fav | lixo (galeria do celular)
+  trash: null, // { items } lixeira do Android
+  target: null, // nome da pasta Nider nova: escolhendo as fotos para ela
   album: null, // pasta do celular aberta
   lib: null, // { items } fotos e vídeos do celular; null = ainda não leu
   libLimit: 600,
@@ -52,6 +54,8 @@ const svg = {
   menu: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
   back: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
   gear: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C9D2DC" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
+  starOn: '<svg width="16" height="16" viewBox="0 0 24 24" fill="#FFD166" stroke="#FFD166" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg>',
+  copy: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
   hide: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12s3.5-6.5 9-6.5 9 6.5 9 6.5-3.5 6.5-9 6.5S3 12 3 12z"/><circle cx="12" cy="12" r="2.5"/><path d="M4 4l16 16"/></svg>',
   share: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M8.2 10.8l7.6-4.1M8.2 13.2l7.6 4.1"/></svg>',
   lock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A9B3BF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>',
@@ -97,14 +101,20 @@ function albums() {
 }
 
 function galleryList() {
-  if (!st.lib) return [];
-  return st.album ? st.lib.items.filter((i) => i.b === st.album) : st.lib.items;
+  if (st.tab === 'lixo') return st.trash ? st.trash.items : [];
+  if (!st.lib || !st.lib.items) return [];
+  if (st.album) return st.lib.items.filter((i) => i.b === st.album);
+  if (st.tab === 'fav') return st.lib.items.filter((i) => i.fav);
+  return st.lib.items;
 }
+
+const trashDays = (it) => it.exp ? Math.max(1, Math.ceil((it.exp - Date.now()) / 86400000)) : 30;
 
 function tile(it) {
   const on = st.gsel && st.gsel.includes(it.uri);
   return `<button class="tile ${on ? 'picked' : ''}" data-act="gitem" data-uri="${esc(it.uri)}" data-hold="gitem" data-g="${esc(it.uri)}" aria-label="${esc(it.name || 'foto')}">
     ${it.video ? `<span class="vid">${svg.play}${fmtDur(it.d)}</span>` : ''}
+    ${st.tab === 'lixo' ? `<span class="name">${trashDays(it)} ${trashDays(it) === 1 ? 'dia' : 'dias'}</span>` : it.fav && st.tab !== 'fav' ? `<span class="favmark">${svg.starOn}</span>` : ''}
     ${st.gsel ? `<span class="check ${on ? 'on' : ''}">${on ? svg.tick : ''}</span>` : ''}
   </button>`;
 }
@@ -120,12 +130,15 @@ function viewGallery() {
     body = `<div class="folders">${albums().map((a) => {
       const cells = [0, 1, 2, 3].map((n) => `<i ${a.items[n] ? `data-g="${esc(a.items[n].uri)}"` : ''}></i>`).join('');
       return `<button class="folder" data-act="album" data-id="${esc(a.id)}"><div class="cover">${cells}<span class="badge">${svg.folder('#7FAAF9', 22)}</span></div><b>${esc(a.name)}</b><small>${a.items.length} ${a.items.length === 1 ? 'item' : 'itens'}</small></button>`;
-    }).join('')}</div>`;
+    }).join('')}<button class="folder" data-act="newNiderFolder"><div class="newcard">${svg.folderPlus}</div><b style="color:#C9D2DC">Nova pasta</b></button></div>`;
   } else {
     const list = galleryList();
     const shown = list.slice(0, st.libLimit);
-    if (!list.length) body = '<div class="empty"><b>Nenhuma foto aqui</b></div>';
-    else if (st.album) body = `<div class="grid">${shown.map(tile).join('')}</div>`;
+    if (!list.length) {
+      body = st.tab === 'fav' ? '<div class="empty"><b>Nenhum favorito ainda</b><p>Segure uma foto e toque em Favoritar.</p></div>'
+        : st.tab === 'lixo' ? (st.trash ? '<div class="empty"><b>A lixeira está vazia</b><p>O que você apagar fica aqui por 30 dias.</p></div>' : '<div class="empty"><p>Carregando a lixeira…</p></div>')
+        : '<div class="empty"><b>Nenhuma foto aqui</b></div>';
+    } else if (st.album || st.tab !== 'fotos') body = `<div class="grid">${shown.map(tile).join('')}</div>`;
     else {
       let html = '';
       let month = null;
@@ -138,26 +151,36 @@ function viewGallery() {
       if (open) html += '</div></section>';
       body = html;
     }
-    if (list.length > shown.length) body += `<div style="padding:0 16px 120px;text-align:center"><button class="btn" data-act="more">Mostrar mais (${list.length - shown.length})</button></div>`;
+    if (list.length > shown.length) body += '<div id="more" class="more" aria-hidden="true"></div>';
   }
   const album = st.album && st.lib && albums().find((a) => a.id === st.album);
-  const head = st.gsel
+  const head = st.target
+    ? `<button class="ib" data-act="targetCancel" aria-label="Cancelar">${svg.close}</button><div class="title"><b>Fotos para “${esc(st.target)}”</b><small>${st.gsel.length} ${st.gsel.length === 1 ? 'escolhida' : 'escolhidas'} · toque para escolher</small></div>`
+    : st.gsel
     ? `<button class="ib" data-act="gselClear" aria-label="Cancelar seleção">${svg.close}</button><div class="title"><b>${st.gsel.length} ${st.gsel.length === 1 ? 'selecionada' : 'selecionadas'}</b></div><button class="pill" data-act="gselAll">Todas</button>`
     : album
       ? `<button class="ib" data-act="albumUp" aria-label="Voltar às pastas">${svg.back}</button><div class="title"><b>${esc(album.name)}</b><small>${album.items.length} itens · segure para selecionar</small></div>`
-      : `<button class="ib" data-act="drawer" aria-label="Abrir menu" style="position:relative">${svg.menu}${st.update ? '<span class="dot"></span>' : ''}</button><div class="title"><b>${st.tab === 'pastas' ? 'Pastas' : 'Fotos'}</b>${lib && lib.items ? `<small>${lib.items.length} itens</small>` : ''}</div>`;
-  const nav = st.gsel
+      : `<button class="ib" data-act="drawer" aria-label="Abrir menu" style="position:relative">${svg.menu}${st.update ? '<span class="dot"></span>' : ''}</button><div class="title"><b>${{ fotos: 'Fotos', pastas: 'Pastas', fav: 'Favoritos', lixo: 'Lixeira' }[st.tab]}</b><small>${st.tab === 'lixo' ? 'Some de vez em 30 dias · segure para selecionar' : st.tab === 'fav' ? `${galleryList().length} itens` : lib && lib.items ? `${lib.items.length} itens` : ''}</small></div>`;
+  const n = st.gsel ? st.gsel.length : 0;
+  const dis = n ? '' : 'disabled';
+  const allFav = n && st.gsel.every((u) => (galleryList().find((x) => x.uri === u) || {}).fav);
+  const nav = st.target
+    ? `<nav class="actions"><button data-act="targetMove" ${dis}>${svg.folder()}Mover para cá</button><button data-act="targetCopy" ${dis}>${svg.copy}Copiar para cá</button></nav>`
+    : st.gsel && st.tab === 'lixo'
+    ? `<nav class="actions"><button data-act="gUntrash" ${dis}>${svg.undo}Restaurar</button><button data-act="gDeleteForever" class="bad" ${dis}>${svg.trash}Apagar de vez</button></nav>`
+    : st.gsel
     ? `<nav class="actions">
-        <button data-act="gShare" ${st.gsel.length ? '' : 'disabled'}>${svg.share}Compartilhar</button>
-        <button data-act="gMove" ${st.gsel.length ? '' : 'disabled'}>${svg.folder()}Mover</button>
-        <button data-act="gToForte" ${st.gsel.length ? '' : 'disabled'}>${svg.hide}Ocultar</button>
-        <button data-act="gTrash" class="bad" ${st.gsel.length ? '' : 'disabled'}>${svg.trash}Apagar</button>
+        <button data-act="gShare" ${dis}>${svg.share}Enviar</button>
+        <button data-act="gFav" ${dis}>${allFav ? svg.starOn : svg.star}${allFav ? 'Desfavoritar' : 'Favoritar'}</button>
+        <button data-act="gMove" ${dis}>${svg.folder()}Mover</button>
+        <button data-act="gToForte" ${dis}>${svg.hide}Ocultar</button>
+        <button data-act="gTrash" class="bad" ${dis}>${svg.trash}Apagar</button>
       </nav>`
     : `<nav class="nav" aria-label="Seções">
       <button data-act="tabFotos" class="${st.tab === 'fotos' && !st.album ? 'on' : ''}">${svg.photo}Fotos</button>
       <button data-act="tabPastas" class="${st.tab === 'pastas' || st.album ? 'on' : ''}">${svg.folder()}Pastas</button>
-      <button data-act="soon">${svg.star}Favoritos</button>
-      <button data-act="soon">${svg.trash}Lixeira</button>
+      <button data-act="tabFav" class="${st.tab === 'fav' ? 'on' : ''}">${svg.star}Favoritos</button>
+      <button data-act="tabLixo" class="${st.tab === 'lixo' ? 'on' : ''}">${svg.trash}Lixeira</button>
     </nav>`;
   return `<header class="top">${head}</header><main class="main" id="gmain">${body}</main>${nav}`;
 }
@@ -175,6 +198,10 @@ async function loadLibrary() {
   }
   render();
 }
+
+const moreObs = new IntersectionObserver((entries) => {
+  if (entries.some((e) => e.isIntersecting)) { moreObs.disconnect(); st.libLimit += 600; render(); }
+}, { rootMargin: '1200px' });
 
 const gthumbs = new Map();
 let gqueue = [];
@@ -238,6 +265,28 @@ async function openGalleryPhoto(it) {
   pswp.init();
   fill(start - 1);
   fill(start + 1);
+}
+
+async function loadTrash() {
+  try { st.trash = await Nider.listTrash(); } catch { st.trash = { items: [] }; }
+  render();
+}
+
+async function toTarget(move) {
+  const uris = [...st.gsel];
+  const folder = st.target;
+  st.toast = `${move ? 'Movendo' : 'Copiando'} ${uris.length} para ${folder}…`;
+  render();
+  st.picking = true;
+  try {
+    const r = await Nider.copyTo({ uris, folder, move });
+    st.target = null;
+    st.gsel = null;
+    st.tab = 'pastas';
+    say(`Pasta “${folder}” criada com ${r.saved} ${r.saved === 1 ? 'item' : 'itens'}${move && r.deleted === false ? ' (as originais continuam)' : ''}`);
+  } catch { say('Não consegui criar a pasta'); }
+  setTimeout(() => { st.picking = false; }, 1500);
+  loadLibrary();
 }
 
 // ---------- atualização pelo app ----------
@@ -437,8 +486,15 @@ function viewSheet() {
   </div></div>`;
 }
 
+// Cada render recria a tela; a rolagem da lista é guardada por tela para não voltar ao topo.
+const scrolls = new Map();
+const scrollKey = () => `${st.screen}|${st.tab}|${st.album}|${st.folder}`;
+let lastKey = null;
+
 function render() {
   const active = document.activeElement?.id;
+  const oldMain = $app.querySelector('.main');
+  if (oldMain && lastKey) scrolls.set(lastKey, oldMain.scrollTop);
   let html = st.screen === 'forte' && st.space ? viewForte() : st.screen === 'settings' && st.space ? viewSettings() : viewGallery();
   if (st.drawer) html += viewDrawer();
   if (st.pin) html += viewPin();
@@ -446,6 +502,11 @@ function render() {
   if (st.dialog) html += viewDialog();
   if (st.toast) html += `<div class="toast" role="status">${esc(st.toast)}</div>`;
   $app.innerHTML = html;
+  lastKey = scrollKey();
+  const newMain = $app.querySelector('.main');
+  if (newMain && scrolls.has(lastKey)) newMain.scrollTop = scrolls.get(lastKey);
+  const more = document.getElementById('more');
+  if (more) moreObs.observe(more);
   if (active === 'dlgInput' || (st.dialog && st.dialog.input !== undefined)) document.getElementById('dlgInput')?.focus();
   loadThumbs();
   attachThumbs();
@@ -716,14 +777,21 @@ const actions = {
   closeDrawer: () => { st.drawer = false; render(); },
   soon: () => say('Chega numa próxima versão'),
   tabFotos: () => { st.drawer = false; st.tab = 'fotos'; st.album = null; st.gsel = null; st.libLimit = 600; render(); },
+  tabFav: () => { st.drawer = false; st.tab = 'fav'; st.album = null; st.gsel = null; st.libLimit = 600; render(); },
+  tabLixo: () => { st.drawer = false; st.tab = 'lixo'; st.album = null; st.gsel = null; st.libLimit = 600; render(); loadTrash(); },
   tabPastas: () => { st.drawer = false; st.tab = 'pastas'; st.album = null; st.gsel = null; render(); },
   album: (el) => { st.album = el.dataset.id; st.libLimit = 600; render(); },
   albumUp: () => { st.album = null; st.gsel = null; render(); },
-  more: () => { st.libLimit += 600; render(); },
   grantRead: async () => { try { await Nider.requestRead(); } catch { /* recusado */ } loadLibrary(); },
   gitem: (el) => {
     const it = galleryList().find((x) => x.uri === el.dataset.uri);
     if (!it) return;
+    if (st.gsel || st.tab === 'lixo') {
+      const sel = st.gsel || [];
+      st.gsel = sel.includes(it.uri) ? sel.filter((u) => u !== it.uri) : [...sel, it.uri];
+      render();
+      return;
+    }
     if (st.gsel) {
       st.gsel = st.gsel.includes(it.uri) ? st.gsel.filter((u) => u !== it.uri) : [...st.gsel, it.uri];
       render();
@@ -746,6 +814,45 @@ const actions = {
     setTimeout(() => { st.picking = false; }, 1500);
     loadLibrary();
   },
+  gFav: async () => {
+    const uris = [...st.gsel];
+    const on = !uris.every((u) => (galleryList().find((x) => x.uri === u) || {}).fav);
+    st.picking = true;
+    try {
+      const r = await Nider.favorite({ uris, on });
+      if (r.deleted) { st.gsel = null; say(on ? `${uris.length} nos Favoritos` : `${uris.length} fora dos Favoritos`); }
+    } catch (e) { say(e.message || 'Não consegui favoritar'); }
+    setTimeout(() => { st.picking = false; }, 1500);
+    loadLibrary();
+  },
+  gUntrash: async () => {
+    const uris = [...st.gsel];
+    st.picking = true;
+    try { const r = await Nider.untrash({ uris }); if (r.deleted) { st.gsel = null; say(`${uris.length} de volta na galeria`); } } catch (e) { say(e.message || 'Não consegui restaurar'); }
+    setTimeout(() => { st.picking = false; }, 1500);
+    loadTrash();
+    loadLibrary();
+  },
+  gDeleteForever: async () => {
+    const uris = [...st.gsel];
+    if (!(await ask({ title: `Apagar ${uris.length} de vez?`, text: 'Não dá para desfazer.', ok: 'Apagar de vez', danger: true }))) return;
+    st.picking = true;
+    try { const r = await Nider.deleteForever({ uris }); if (r.deleted) { st.gsel = null; say('Apagado de vez'); } } catch (e) { say(e.message || 'Não consegui apagar'); }
+    setTimeout(() => { st.picking = false; }, 1500);
+    loadTrash();
+  },
+  newNiderFolder: async () => {
+    const name = await ask({ title: 'Nova pasta', input: '', placeholder: 'Ex.: Viagem 2026', ok: 'Escolher fotos' });
+    if (!name) return;
+    st.target = name;
+    st.tab = 'fotos';
+    st.album = null;
+    st.gsel = [];
+    render();
+  },
+  targetCancel: () => { st.target = null; st.gsel = null; render(); },
+  targetMove: () => toTarget(true),
+  targetCopy: () => toTarget(false),
   gShare: async () => { try { await Nider.shareUris({ uris: st.gsel }); } catch { /* cancelado */ } },
   gMove: async () => {
     const uris = [...st.gsel];
@@ -986,6 +1093,7 @@ App.addListener('backButton', () => {
   if (st.screen === 'settings') return actions.closeSettings();
   if (st.folder) return actions.up();
   if (st.space) return lock(false);
+  if (st.target) return actions.targetCancel();
   if (st.gsel) return actions.gselClear();
   if (st.album) return actions.albumUp();
   App.minimizeApp();

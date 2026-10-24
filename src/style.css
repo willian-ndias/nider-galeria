@@ -119,3 +119,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .dot { position: absolute; top: 11px; right: 11px; width: 9px; height: 9px; border-radius: 5px; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
 .badge-new { font-size: 11px; font-weight: 800; color: #0B0E12; background: var(--accent); padding: 3px 8px; border-radius: 8px; }
 .sw:disabled { opacity: 1; }
+.more { height: 1px; margin-bottom: 120px; }
+.favmark { position: absolute; left: 6px; top: 6px; }
+.actions button { min-width: 0; }
