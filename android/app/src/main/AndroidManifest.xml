@@ -22,7 +22,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- "Compartilhar → Nider Galeria": fotos e PDFs entram no Forte. -->
+
+        </activity>
+
+        <!-- "Compartilhar → Nider Forte": guarda sem senha e volta para o app de origem. -->
+        <activity
+            android:name=".ForteShareActivity"
+            android:label="Nider Forte"
+            android:icon="@mipmap/ic_forte"
+            android:roundIcon="@mipmap/ic_forte"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
@@ -30,7 +43,6 @@
                 <data android:mimeType="image/*" />
                 <data android:mimeType="application/pdf" />
             </intent-filter>
-
         </activity>
 
         <provider

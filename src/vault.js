@@ -129,6 +129,15 @@ export class OpenSpace {
     await remove(`${ROOT}/${this.id}/${id}.bin`);
     await remove(`${ROOT}/${this.id}/${id}.t.bin`);
   }
+  async moveItems(ids, folder) {
+    for (const it of this.index.items) if (ids.includes(it.id)) it.folder = folder;
+    await this.save();
+  }
+  async folderNamed(name) {
+    let f = this.index.folders.find((x) => x.name === name);
+    if (!f) f = await this.addFolder(name);
+    return f;
+  }
   async renameItem(id, name) {
     const it = this.index.items.find((x) => x.id === id);
     if (it) { it.name = name; await this.save(); }
@@ -269,6 +278,48 @@ export const vault = {
     await removeDir(`${ROOT}/${id}`);
     primary.index.decoy = null;
     await primary.save();
+  },
+
+  // Caixa de entrada: o "Compartilhar → Nider Forte" guarda sem senha usando a
+  // chave pública (config.json); a privada fica só no índice do principal.
+  async ensureInbox(primary) {
+    if (!primary.primary || primary.index.inboxKey) return;
+    const pair = await crypto.subtle.generateKey(
+      { name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['encrypt', 'decrypt']);
+    primary.index.inboxKey = b64(await crypto.subtle.exportKey('pkcs8', pair.privateKey));
+    await primary.save();
+    const cfg = await readConfig();
+    cfg.inbox = b64(await crypto.subtle.exportKey('spki', pair.publicKey));
+    await writeConfig(cfg);
+  },
+
+  // Traz o que chegou pela caixa de entrada para a pasta Recebidos. Devolve quantos.
+  async importInbox(primary) {
+    if (!primary.primary || !primary.index.inboxKey) return 0;
+    let entries = [];
+    try { entries = (await Filesystem.readdir({ path: `${ROOT}/inbox`, directory: Directory.Data })).files; } catch { return 0; }
+    if (!entries.length) return 0;
+    const priv = await crypto.subtle.importKey('pkcs8', unb64(primary.index.inboxKey), { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+    const folder = await primary.folderNamed('Recebidos');
+    let n = 0;
+    for (const e of entries) {
+      const dir = `${ROOT}/inbox/${e.name}`;
+      try {
+        const raw = new Uint8Array(await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, priv, await readBytes(`${dir}/key.bin`)));
+        const key = await dekKey(raw);
+        const meta = JSON.parse(dec.decode(await open(key, await readBytes(`${dir}/meta.bin`))));
+        const data = await open(key, await readBytes(`${dir}/data.bin`));
+        let thumb = null;
+        try { thumb = await open(key, await readBytes(`${dir}/thumb.bin`)); } catch { /* PDF ou sem miniatura */ }
+        await primary.addItem(folder.id, meta, data, thumb);
+        n++;
+      } catch {
+        // Sem key.bin ainda (gravando) ou de outra chave: fica para a próxima.
+        continue;
+      }
+      await removeDir(dir);
+    }
+    return n;
   },
 
   async getWipe() { return !!(await readConfig()).wipe; },

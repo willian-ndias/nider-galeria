@@ -10,7 +10,8 @@ O app passou de Kotlin/Compose para **Capacitor** (HTML/JS em `src/`, Android em
 - Fotos com miniatura criptografada à parte; visualizador PhotoSwipe (pinça, toque duplo, arrastar); PDF com pdf.js.
 - Tranca ao sair do app; print bloqueado dentro do Forte (privacy-screen).
 - Galeria e barra de baixo ainda são só o esqueleto ("em breve").
-- **Compartilhar → Nider Galeria** (fotos e PDFs, um ou vários): pede a senha, pergunta a pasta, guarda e apaga a original da galeria sem perguntar. Isso usa "Gerenciar mídia" (Android 12+), liberado uma vez na primeira vez; sem essa liberação cai na confirmação do Android. Foto que vem da nuvem do Google Fotos não tem como ser apagada daqui. Ponte nativa em `android/app/src/main/java/br/com/nider/galeria/NiderPlugin.java`.
+- **Compartilhar → Nider Forte** (fotos e PDFs, um ou vários): guarda **sem senha** e volta para o app de origem (`ForteShareActivity.java`, tela transparente). Cada arquivo vai com uma chave AES nova, trancada pela chave pública RSA-OAEP da caixa de entrada (`config.json`, campo `inbox`); a privada fica só no índice do principal. Ao abrir com a senha principal, o que chegou vai para a pasta **Recebidos**. A original some da galeria: sem pergunta se "Gerenciar mídia" estiver liberado (Configurações do Forte → "Sumir da galeria sem perguntar"), senão com a confirmação do Android. Foto só da nuvem do Google Fotos não tem como ser apagada daqui.
+- **Mover** entre pastas do Forte na seleção.
 - **Seleção no Forte** (segurar): Todos, Restaurar para a galeria (sai do Forte e vai para `Pictures/Nider Galeria`, PDF para `Download/Nider Galeria`; Android 10+), Renomear, Excluir.
 - **Lixeira do Forte**: excluir manda para a lixeira; some de vez após 30 dias (limpa ao abrir o Forte). Apagar pasta manda os itens para a lixeira; recuperar sem a pasta cria "Recuperados".
 

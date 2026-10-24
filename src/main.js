@@ -30,7 +30,7 @@ const st = {
   wipe: false,
   picking: false,
   sel: null, // ids selecionados dentro de uma pasta ou da lixeira
-  incoming: null, // arquivos que chegaram pelo Compartilhar
+  media: null, // { read, manage }: liberações do Android para apagar da galeria sem perguntar
 };
 
 const thumbs = new Map();
@@ -148,7 +148,7 @@ function viewForte() {
   const n = sel ? sel.length : 0;
   const bar = !sel ? '' : inTrash
     ? `<nav class="actions"><button data-act="untrashSel" ${n ? '' : 'disabled'}>${svg.undo}Recuperar</button><button data-act="purgeSel" class="bad" ${n ? '' : 'disabled'}>${svg.trash}Excluir de vez</button></nav>`
-    : `<nav class="actions"><button data-act="restoreSel" ${n ? '' : 'disabled'}>${svg.restore}Restaurar</button><button data-act="renameSel" ${n === 1 ? '' : 'disabled'}>${svg.edit}Renomear</button><button data-act="trashSel" class="bad" ${n ? '' : 'disabled'}>${svg.trash}Excluir</button></nav>`;
+    : `<nav class="actions"><button data-act="restoreSel" ${n ? '' : 'disabled'}>${svg.restore}Restaurar</button><button data-act="moveSel" ${n ? '' : 'disabled'}>${svg.folder()}Mover</button><button data-act="renameSel" ${n === 1 ? '' : 'disabled'}>${svg.edit}Renomear</button><button data-act="trashSel" class="bad" ${n ? '' : 'disabled'}>${svg.trash}Excluir</button></nav>`;
   return `
     <header class="top">${head}</header>
     <main class="main">${body}</main>
@@ -185,6 +185,7 @@ function viewSettings() {
       </div>` : ''}
       <div class="list">
         <button class="sw" data-act="toggleLock"><span><b>Trancar ao sair do app</b><small>Some também da tela de recentes</small></span><span class="track ${lockOn ? 'on' : ''}"></span></button>
+        <button class="sw" data-act="grantMedia" ${st.media && st.media.read && st.media.manage ? 'disabled' : ''}><span><b>Sumir da galeria sem perguntar</b><small>${st.media && st.media.read && st.media.manage ? 'Liberado: o que vai para o Forte some da galeria' : 'Toque para liberar "Gerenciar mídia" uma vez'}</small></span><span class="track ${st.media && st.media.read && st.media.manage ? 'on' : ''}"></span></button>
         <button class="sw" data-act="toggleWipe"><span><b>Apagar após 10 erros</b><small>Apaga o Forte se errarem a senha 10 vezes</small></span><span class="track ${wipeOn ? 'on' : ''}"></span></button>
       </div>
     </div></main>`;
@@ -208,7 +209,7 @@ function viewDrawer() {
 }
 
 const PIN_TEXT = {
-  unlock: () => ['Nider Forte', st.incoming ? `Digite a senha para guardar ${plural(st.incoming.length)}` : 'Digite a senha'],
+  unlock: () => ['Nider Forte', 'Digite a senha'],
   create: (s) => s === 1 ? ['Crie a senha principal', 'Ela abre o seu Forte e as configurações dele'] : ['Repita a senha principal', 'Para confirmar'],
   change: (s) => s === 1 ? ['Nova senha principal', '4 números'] : ['Repita a nova senha', 'Para confirmar'],
   decoy: (s) => s === 1 ? ['Senha de disfarce', 'Ela abre só o Forte secundário'] : ['Repita a senha de disfarce', 'Para confirmar'],
@@ -373,7 +374,13 @@ async function enter(space) {
   try { await PrivacyScreen.enable(); } catch { /* web */ }
   space.purgeTrash().catch(() => {});
   render();
-  if (st.incoming) offerIncoming();
+  if (space.primary) {
+    try {
+      await vault.ensureInbox(space);
+      const n = await vault.importInbox(space);
+      if (n && st.space === space) say(`${plural(n)} ${n === 1 ? 'novo' : 'novos'} em Recebidos`);
+    } catch (e) { console.error(e); }
+  }
 }
 
 function lock(quiet) {
@@ -469,102 +476,22 @@ async function addFiles(files) {
   say(`${files.length} ${files.length === 1 ? 'item guardado' : 'itens guardados'} no Forte`);
 }
 
-// ---------- Compartilhar → Nider Galeria ----------
+// ---------- liberação para apagar da galeria sem perguntar ----------
 
-async function checkShared() {
+async function refreshMedia() {
+  try { st.media = await Nider.mediaAccess(); } catch { st.media = null; }
+}
+
+async function grantMedia() {
+  st.picking = true;
+  let acc = st.media || { read: false, manage: false };
   try {
-    const { files } = await Nider.takeShared();
-    if (!files || !files.length) return;
-    st.incoming = files;
-    st.drawer = false;
-    if (st.space) offerIncoming();
-    else openPin((await vault.exists()) ? 'unlock' : 'create');
-  } catch { /* fora do Android */ }
-}
-
-function dropIncoming() {
-  st.incoming = null;
-  Nider.clearShared().catch(() => {});
-}
-
-function offerIncoming() {
-  const files = st.incoming;
-  if (!files || !st.space) return;
-  const options = st.space.index.folders.map((f) => ({ label: f.name, run: () => saveIncoming(f.id) }));
-  options.push({ label: '+ Nova pasta', run: async () => {
-    const name = await ask({ title: 'Nova pasta', input: '', placeholder: 'Ex.: Documentos', ok: 'Criar' });
-    if (!name) return dropIncoming();
-    const f = await st.space.addFolder(name);
-    saveIncoming(f.id);
-  } });
-  st.sheet = { title: `Guardar ${plural(files.length)} em qual pasta?`, options, onCancel: dropIncoming };
+    if (!acc.read) acc = await Nider.requestRead();
+    if (!acc.manage) await Nider.openManageMedia();
+  } catch { say('Libere em Ajustes do Android → Apps → Nider Galeria'); }
+  st.media = acc;
   render();
 }
-
-async function saveIncoming(folderId) {
-  const files = st.incoming;
-  const sp = st.space;
-  st.incoming = null;
-  if (!files || !sp) return;
-  st.folder = folderId;
-  st.sel = null;
-  const media = [];
-  let saved = 0;
-  for (const f of files) {
-    st.toast = `Guardando ${saved + 1} de ${files.length}…`;
-    render();
-    try {
-      const r = await Filesystem.readFile({ path: `file://${f.path}` });
-      if (await storeOne(sp, folderId, { name: f.name, mime: f.mime || '', bytes: fromBase64(r.data) })) {
-        saved++;
-        if (f.media) media.push(f.media);
-      }
-    } catch (e) { console.error(e); }
-  }
-  await Nider.clearShared().catch(() => {});
-  if (!saved) return say('Nenhum arquivo pôde ser guardado. O Forte aceita fotos e PDFs');
-  say(`${plural(saved)} no Forte`);
-  if (!media.length) {
-    setTimeout(() => say('Guardado. Esta foto veio da nuvem do Google Fotos: apague a original por lá'), 3300);
-    return;
-  }
-  await removeOriginals(media);
-}
-
-// A original some da galeria sem perguntar quando o app tem "Gerenciar mídia".
-// Sem isso, o Android mostra a confirmação dele. A liberação é pedida uma vez só.
-let pendingDelete = null;
-
-async function removeOriginals(media) {
-  let acc = { read: false, manage: false };
-  try { acc = await Nider.mediaAccess(); } catch { return; }
-  if (!(acc.read && acc.manage) && !askedSetup()) {
-    markSetup();
-    const ok = await ask({ title: 'Liberar uma vez', text: 'Para a foto sumir da galeria sozinha, sem perguntar, o Android precisa de duas liberações: ver as fotos e "Gerenciar mídia". É só desta vez.', ok: 'Liberar' });
-    if (ok) {
-      st.picking = true;
-      if (!acc.read) acc = await Nider.requestRead().catch(() => acc);
-      if (!acc.manage) {
-        pendingDelete = media;
-        await Nider.openManageMedia().catch(() => {});
-        return; // apaga quando voltar da tela do Android
-      }
-    }
-  }
-  await runDelete(media);
-}
-
-async function runDelete(media) {
-  st.picking = true;
-  try {
-    const r = await Nider.deleteOriginals({ uris: media });
-    if (!r.deleted) say('A original continua na galeria');
-  } catch { say('Não consegui apagar a original. Apague no app de fotos'); }
-  setTimeout(() => { st.picking = false; }, 1500);
-}
-
-function askedSetup() { try { return localStorage.getItem('nider.midia') === '1'; } catch { return true; } }
-function markSetup() { try { localStorage.setItem('nider.midia', '1'); } catch { /* sem armazenamento */ } }
 
 // ---------- seleção: restaurar, renomear, excluir ----------
 
@@ -617,7 +544,7 @@ const actions = {
     render();
     if (p.value.length === 4) setTimeout(() => pinSubmit(p.value), 150);
   },
-  cancelPin: () => { st.pin = null; if (st.incoming) dropIncoming(); render(); },
+  cancelPin: () => { st.pin = null; render(); },
   lock: () => lock(false),
   folder: (el) => { st.folder = el.dataset.id; st.sel = null; render(); },
   up: () => { st.folder = null; st.sel = null; render(); },
@@ -627,6 +554,20 @@ const actions = {
     const ids = [...st.sel];
     if (!(await ask({ title: `Restaurar ${plural(ids.length)} para a galeria?`, text: 'Eles saem do Forte e voltam para a galeria do celular, na pasta Nider Galeria.', ok: 'Sim, restaurar' }))) return;
     await restoreToGallery(ids);
+  },
+  moveSel: () => {
+    const ids = [...st.sel];
+    const targets = st.space.index.folders.filter((f) => f.id !== st.folder);
+    const go = async (fid, name) => { await st.space.moveItems(ids, fid); st.sel = null; say(`${plural(ids.length)} em ${name}`); };
+    const options = targets.map((f) => ({ label: f.name, run: () => go(f.id, f.name) }));
+    options.push({ label: '+ Nova pasta', run: async () => {
+      const name = await ask({ title: 'Nova pasta', input: '', placeholder: 'Ex.: Documentos', ok: 'Criar' });
+      if (!name) return;
+      const f = await st.space.addFolder(name);
+      go(f.id, f.name);
+    } });
+    st.sheet = { title: `Mover ${plural(ids.length)} para`, options };
+    render();
   },
   renameSel: async () => {
     const it = st.space.index.items.find((i) => i.id === st.sel[0]);
@@ -655,7 +596,8 @@ const actions = {
     st.sel = null;
     say('Excluído de vez');
   },
-  settings: () => { st.screen = 'settings'; render(); },
+  settings: async () => { st.screen = 'settings'; await refreshMedia(); render(); },
+  grantMedia: () => grantMedia(),
   closeSettings: () => { st.screen = 'forte'; render(); },
   changePin: () => openPin('change'),
   setDecoy: () => openPin('decoy'),
@@ -703,7 +645,7 @@ const actions = {
     d.resolve(value);
   },
   dlgCancel: () => { const d = st.dialog; st.dialog = null; render(); d.resolve(null); },
-  sheetClose: (el, ev) => { if (ev.target === el) { const c = st.sheet.onCancel; st.sheet = null; render(); if (c) c(); } },
+  sheetClose: (el, ev) => { if (ev.target === el) { st.sheet = null; render(); } },
   sheetPick: (el) => { const o = st.sheet.options[Number(el.dataset.i)]; st.sheet = null; render(); o.run(); },
 };
 
@@ -758,7 +700,7 @@ $picker.addEventListener('change', async () => {
 
 App.addListener('appStateChange', ({ isActive }) => {
   if (isActive) {
-    if (pendingDelete) { const m = pendingDelete; pendingDelete = null; runDelete(m); return; }
+    if (st.screen === 'settings') refreshMedia().then(render);
     setTimeout(() => { st.picking = false; }, 1500);
     return;
   }
@@ -769,7 +711,7 @@ App.addListener('backButton', () => {
   if (pswp) return pswp.close();
   if (pdfClose) return pdfClose();
   if (st.dialog) return actions.dlgCancel();
-  if (st.sheet) { const c = st.sheet.onCancel; st.sheet = null; render(); if (c) c(); return; }
+  if (st.sheet) { st.sheet = null; return render(); }
   if (st.sel) return actions.selClear();
   if (st.pin) return actions.cancelPin();
   if (st.drawer) return actions.closeDrawer();
@@ -780,5 +722,3 @@ App.addListener('backButton', () => {
 });
 
 render();
-Nider.addListener('shared', checkShared).catch(() => {});
-checkShared();

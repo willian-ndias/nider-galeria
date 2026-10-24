@@ -5,11 +5,9 @@ import android.app.PendingIntent;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
-import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
-import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.Manifest;
 import com.getcapacitor.PermissionState;
@@ -24,20 +22,16 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * Ponte do Nider Galeria com o Android: receber fotos e PDFs pelo "Compartilhar",
- * apagar a original da galeria (com a confirmação do sistema) e devolver um
- * arquivo do Forte para a galeria do celular.
+ * Ponte do Nider Galeria com o Android: liberar "Gerenciar mídia", apagar a
+ * original da galeria e devolver um arquivo do Forte para a galeria do celular.
+ * O "Compartilhar → Nider Forte" fica em ForteShareActivity.
  */
 @CapacitorPlugin(
     name = "Nider",
@@ -48,9 +42,6 @@ import java.util.regex.Pattern;
 )
 public class NiderPlugin extends Plugin {
 
-    private static final Pattern MEDIA_URI = Pattern.compile("content://media/[^/\\s]+/(images|video|file)/media/\\d+");
-
-    private final List<JSObject> pending = new ArrayList<>();
     private ActivityResultLauncher<IntentSenderRequest> deleteLauncher;
     private PluginCall deleteCall;
 
@@ -63,68 +54,6 @@ public class NiderPlugin extends Plugin {
             deleteCall.resolve(out);
             deleteCall = null;
         });
-        receive(getActivity().getIntent());
-    }
-
-    @Override
-    protected void handleOnNewIntent(Intent intent) {
-        super.handleOnNewIntent(intent);
-        if (receive(intent)) notifyListeners("shared", new JSObject());
-    }
-
-    private boolean receive(Intent intent) {
-        if (intent == null) return false;
-        String action = intent.getAction();
-        List<Uri> uris = new ArrayList<>();
-        if (Intent.ACTION_SEND.equals(action)) {
-            Uri u = intent.getParcelableExtra(Intent.EXTRA_STREAM);
-            if (u != null) uris.add(u);
-        } else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
-            ArrayList<Uri> list = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
-            if (list != null) uris.addAll(list);
-        } else {
-            return false;
-        }
-        intent.setAction(null);
-        File dir = new File(getContext().getCacheDir(), "shared");
-        dir.mkdirs();
-        ContentResolver cr = getContext().getContentResolver();
-        int n = 0;
-        for (Uri uri : uris) {
-            try {
-                String name = displayName(cr, uri);
-                File out = new File(dir, (n++) + "_" + name.replaceAll("[^A-Za-z0-9._-]", "_"));
-                try (InputStream in = cr.openInputStream(uri); OutputStream os = new FileOutputStream(out)) {
-                    copy(in, os);
-                }
-                JSObject f = new JSObject();
-                f.put("path", out.getAbsolutePath());
-                f.put("name", name);
-                f.put("mime", cr.getType(uri));
-                f.put("media", mediaUri(uri));
-                pending.add(f);
-            } catch (Exception ignored) {
-                // Um arquivo que não abre não impede os outros.
-            }
-        }
-        return !uris.isEmpty();
-    }
-
-    /** A foto compartilhada pela galeria ou pelo Google Fotos, como endereço da galeria do Android (para apagar). */
-    private static String mediaUri(Uri uri) {
-        String s = uri.toString();
-        if ("media".equals(uri.getAuthority())) return s;
-        Matcher m = MEDIA_URI.matcher(Uri.decode(s));
-        return m.find() ? m.group() : null;
-    }
-
-    private static String displayName(ContentResolver cr, Uri uri) {
-        try (Cursor c = cr.query(uri, new String[] {OpenableColumns.DISPLAY_NAME}, null, null, null)) {
-            if (c != null && c.moveToFirst() && c.getString(0) != null) return c.getString(0);
-        } catch (Exception ignored) {
-        }
-        String last = uri.getLastPathSegment();
-        return last != null ? last : "arquivo";
     }
 
     private static void copy(InputStream in, OutputStream out) throws java.io.IOException {
@@ -175,24 +104,6 @@ public class NiderPlugin extends Plugin {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         getContext().startActivity(i);
         call.resolve(new JSObject().put("opened", true));
-    }
-
-    @PluginMethod
-    public void takeShared(PluginCall call) {
-        JSArray files = new JSArray();
-        for (JSObject f : pending) files.put(f);
-        pending.clear();
-        JSObject out = new JSObject();
-        out.put("files", files);
-        call.resolve(out);
-    }
-
-    @PluginMethod
-    public void clearShared(PluginCall call) {
-        File dir = new File(getContext().getCacheDir(), "shared");
-        File[] list = dir.listFiles();
-        if (list != null) for (File f : list) f.delete();
-        call.resolve();
     }
 
     @PluginMethod
